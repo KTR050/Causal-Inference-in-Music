@@ -3,3 +3,4 @@ librosa
 numpy
 moviepy
 soundfile
+gspread
