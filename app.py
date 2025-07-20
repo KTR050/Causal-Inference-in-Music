@@ -1,6 +1,16 @@
 import base64
 import os
 
+b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
+if b64_creds:
+    with open("credentials.json", "wb") as f:
+        f.write(base64.b64decode(b64_creds))
+else:
+    print("環境変数 GOOGLE_CREDENTIALS_B64 が設定されていません。")
+
+import base64
+import os
+
 # 環境変数から Base64 文字列を取得（GitHub Actions など）
 b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
 
