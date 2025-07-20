@@ -4,3 +4,4 @@ numpy
 moviepy
 soundfile
 gspread
+oauth2client
