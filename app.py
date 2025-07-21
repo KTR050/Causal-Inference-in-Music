@@ -1,3 +1,6 @@
+import os
+print("credentials.json の存在確認:", os.path.exists("credentials.json"))
+
 import base64
 import os
 
