@@ -5,6 +5,15 @@ import soundfile as sf
 import streamlit as st
 from save_to_sheet import save_to_sheet
 
+# credentials.json を作成（Streamlit Secrets 経由）
+b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
+if b64_creds:
+    with open("credentials.json", "wb") as f:
+        f.write(base64.b64decode(b64_creds))
+else:
+    raise FileNotFoundError("環境変数 GOOGLE_CREDENTIALS_B64 が見つかりません。")
+
+
 AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 
@@ -59,3 +68,4 @@ if st.button("送信"):
     row = [file1, tempo1, key1, file2, tempo2, key2, choice]
     save_to_sheet("研究", "アンケート集計", row)
     st.success("回答がスプレッドシートに保存されました。ありがとうございました！")
+
