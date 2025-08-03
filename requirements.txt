@@ -1,9 +1,7 @@
 streamlit
 librosa
 numpy
-moviepy
 soundfile
 gspread
 oauth2client
 scipy
-requests  
