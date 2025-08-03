@@ -5,3 +5,5 @@ moviepy
 soundfile
 gspread
 oauth2client
+scipy
+requests  
