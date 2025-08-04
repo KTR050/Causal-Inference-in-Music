@@ -35,7 +35,7 @@ os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # ==== パラメータ ====
 bpm_options = [0.8, 1.0, 1.2,1.4,1.6,1.8,2]
-key_options = [-3,-2, -1, 0, 1, 2,3]
+key_options = [-2.5,-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3]
 
 # ==== ユーティリティ関数 ====
 def extract_key_from_filename(filename):
@@ -147,5 +147,6 @@ if st.button("送信"):
     ]
     save_to_sheet("研究", "アンケート集計", row)
     st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
+
 
 
