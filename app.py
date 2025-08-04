@@ -28,7 +28,7 @@ if b64_creds:
 else:
     raise FileNotFoundError("GOOGLE_CREDENTIALS_B64 が設定されていません。")
 
-# ==== フォルダ ====
+# ==== フォルダ設定 ====
 AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
@@ -50,8 +50,8 @@ def get_mode_shift(original_key):
         return shift
     return 0
 
-# ==== EQ 関数 ====
-def butter_bandpass(lowcut, highcut, fs, order=4):
+# ==== EQ 関数（次数2・ゲイン制限・正規化あり） ====
+def butter_bandpass(lowcut, highcut, fs, order=2):
     nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
@@ -63,18 +63,18 @@ def apply_filter(data, lowcut, highcut, fs, gain):
     return filtered * gain
 
 def apply_random_eq(y, sr):
-    low_gain = np.random.uniform(0.8, 1.2)
-    mid_gain = np.random.uniform(0.8, 1.2)
-    high_gain = np.random.uniform(0.8, 1.2)
+    low_gain = np.random.uniform(0.9, 1.1)
+    mid_gain = np.random.uniform(0.9, 1.1)
+    high_gain = np.random.uniform(0.9, 1.1)
 
     low = apply_filter(y, 20, 250, sr, low_gain)
     mid = apply_filter(y, 250, 4000, sr, mid_gain)
     high = apply_filter(y, 4000, 16000, sr, high_gain)
 
     y_eq = low + mid + high
-    y_eq = np.nan_to_num(y_eq)  # NaN/Infを0に
-    y_eq = np.clip(y_eq, -1.0, 1.0)  # クリッピング
-    y_eq = librosa.util.normalize(y_eq)  # 正規化
+    y_eq = np.nan_to_num(y_eq)
+    y_eq = np.clip(y_eq, -1.0, 1.0)
+    y_eq = librosa.util.normalize(y_eq)
 
     eq_info = {
         "low": round(low_gain, 2),
@@ -100,7 +100,7 @@ def process_audio(input_path, tempo=1.0, key_shift=0, output_path="output.wav", 
     sf.write(output_path, y_eq, sr)
     return eq_info
 
-# ==== ファイル選択 ====
+# ==== 音声ファイル選択 ====
 files = [f for f in os.listdir(AUDIO_FOLDER) if f.endswith(".wav")]
 
 file1 = random.choice(files)
@@ -117,7 +117,7 @@ pitch2 = random.choice(key_options)
 key2 = extract_key_from_filename(file2)
 mode2 = get_mode(key2)
 
-# ==== 音声変換 ====
+# ==== 音声生成 ====
 processed_file1 = os.path.join(TEMP_FOLDER, "processed1.wav")
 processed_file2 = os.path.join(TEMP_FOLDER, "processed2.wav")
 
