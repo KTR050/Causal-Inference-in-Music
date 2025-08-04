@@ -8,7 +8,7 @@ import streamlit as st
 from scipy.signal import butter, lfilter
 from save_to_sheet import save_to_sheet
 
-# 相対調変換（任意）
+# ==== 相対調変換 ====
 RELATIVE_KEY_SHIFT = {
     "C": ("Am", -3), "Am": ("C", 3),
     "G": ("Em", -3), "Em": ("G", 3),
@@ -20,24 +20,24 @@ RELATIVE_KEY_SHIFT = {
     "Eb": ("Cm", -3), "Cm": ("Eb", 3)
 }
 
-# 認証
+# ==== 認証情報 ====
 b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
 if b64_creds:
     with open("credentials.json", "wb") as f:
         f.write(base64.b64decode(b64_creds))
 else:
-    raise FileNotFoundError("GOOGLE_CREDENTIALS_B64 が見つかりません")
+    raise FileNotFoundError("GOOGLE_CREDENTIALS_B64 が設定されていません。")
 
-# フォルダ設定
+# ==== フォルダ ====
 AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-# パラメータ
+# ==== パラメータ ====
 bpm_options = [0.8, 1.0, 1.2]
 key_options = [-2, -1, 0, 1, 2]
 
-# ユーティリティ関数
+# ==== ユーティリティ関数 ====
 def extract_key_from_filename(filename):
     return filename.split("_")[0]
 
@@ -50,7 +50,7 @@ def get_mode_shift(original_key):
         return shift
     return 0
 
-# EQ処理
+# ==== EQ 関数 ====
 def butter_bandpass(lowcut, highcut, fs, order=4):
     nyq = 0.5 * fs
     low = lowcut / nyq
@@ -63,16 +63,18 @@ def apply_filter(data, lowcut, highcut, fs, gain):
     return filtered * gain
 
 def apply_random_eq(y, sr):
-    low_gain = np.random.uniform(0.7, 1.3)
-    mid_gain = np.random.uniform(0.7, 1.3)
-    high_gain = np.random.uniform(0.7, 1.3)
+    low_gain = np.random.uniform(0.8, 1.2)
+    mid_gain = np.random.uniform(0.8, 1.2)
+    high_gain = np.random.uniform(0.8, 1.2)
 
     low = apply_filter(y, 20, 250, sr, low_gain)
     mid = apply_filter(y, 250, 4000, sr, mid_gain)
     high = apply_filter(y, 4000, 16000, sr, high_gain)
 
     y_eq = low + mid + high
-    y_eq = np.clip(y_eq, -1.0, 1.0)
+    y_eq = np.nan_to_num(y_eq)  # NaN/Infを0に
+    y_eq = np.clip(y_eq, -1.0, 1.0)  # クリッピング
+    y_eq = librosa.util.normalize(y_eq)  # 正規化
 
     eq_info = {
         "low": round(low_gain, 2),
@@ -81,9 +83,9 @@ def apply_random_eq(y, sr):
     }
     return y_eq, eq_info
 
-# 音声処理
+# ==== 音声処理 ====
 def process_audio(input_path, tempo=1.0, key_shift=0, output_path="output.wav", base_key=None):
-    y, sr = librosa.load(input_path, sr=None)
+    y, sr = librosa.load(input_path, sr=None, mono=True)
 
     if tempo != 1.0:
         y = librosa.effects.time_stretch(y, rate=tempo)
@@ -98,7 +100,7 @@ def process_audio(input_path, tempo=1.0, key_shift=0, output_path="output.wav", 
     sf.write(output_path, y_eq, sr)
     return eq_info
 
-# ランダムに2曲選択
+# ==== ファイル選択 ====
 files = [f for f in os.listdir(AUDIO_FOLDER) if f.endswith(".wav")]
 
 file1 = random.choice(files)
@@ -115,14 +117,14 @@ pitch2 = random.choice(key_options)
 key2 = extract_key_from_filename(file2)
 mode2 = get_mode(key2)
 
-# 音声ファイル処理
+# ==== 音声変換 ====
 processed_file1 = os.path.join(TEMP_FOLDER, "processed1.wav")
 processed_file2 = os.path.join(TEMP_FOLDER, "processed2.wav")
 
 eq1 = process_audio(os.path.join(AUDIO_FOLDER, file1), tempo1, pitch1, processed_file1, key1)
 eq2 = process_audio(os.path.join(AUDIO_FOLDER, file2), tempo2, pitch2, processed_file2, key2)
 
-# UI
+# ==== UI ====
 st.title("🎧 音楽選好実験")
 
 st.subheader("🎵 選択肢 1")
