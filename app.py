@@ -125,14 +125,14 @@ eq1 = process_audio(os.path.join(AUDIO_FOLDER, file1), tempo1, pitch1, processed
 eq2 = process_audio(os.path.join(AUDIO_FOLDER, file2), tempo2, pitch2, processed_file2, key2)
 
 # ==== UI ====
-st.title("🎧 音楽選好実験")
+st.title("音楽選好実験")
 
-st.subheader("🎵 選択肢 1")
+st.subheader("選択肢 1")
 st.audio(processed_file1)
 st.text(f"テンポ倍率: {tempo1}, キー変化: {pitch1:+}, モード: {mode1}")
 st.text(f"EQ: 低={eq1['low']}, 中={eq1['mid']}, 高={eq1['high']}")
 
-st.subheader("🎵 選択肢 2")
+st.subheader("選択肢 2")
 st.audio(processed_file2)
 st.text(f"テンポ倍率: {tempo2}, キー変化: {pitch2:+}, モード: {mode2}")
 st.text(f"EQ: 低={eq2['low']}, 中={eq2['mid']}, 高={eq2['high']}")
@@ -147,3 +147,4 @@ if st.button("送信"):
     ]
     save_to_sheet("研究", "アンケート集計", row)
     st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
+
