@@ -44,6 +44,10 @@ key_options = [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]
 def extract_key_from_filename(filename):
     return filename.split("_")[0]
 
+def extract_music_name(filename):
+    parts = filename.split("_")
+    return parts[1] if len(parts) >= 3 else filename
+
 def get_mode(key_name):
     return "マイナー" if key_name.endswith("m") else "メジャー"
 
@@ -110,6 +114,7 @@ file1 = random.choice(files)
 tempo1 = random.choice(bpm_options)
 pitch1 = random.choice(key_options)
 key1 = extract_key_from_filename(file1)
+musicname1 = extract_music_name(file1)
 mode1 = get_mode(key1)
 
 file2 = random.choice(files)
@@ -118,6 +123,7 @@ while file2 == file1:
 tempo2 = random.choice(bpm_options)
 pitch2 = random.choice(key_options)
 key2 = extract_key_from_filename(file2)
+musicname2 = extract_music_name(file2)
 mode2 = get_mode(key2)
 
 # ==== 音声生成 ====
@@ -132,22 +138,22 @@ st.title("音楽選好実験")
 
 st.subheader("選択肢 1")
 st.audio(processed_file1)
-st.text(f"テンポ倍率: {tempo1}, キー変化: {pitch1:+.1f}, モード: {mode1}")
+st.text(f"曲名: {musicname1}, テンポ倍率: {tempo1}, キー変化: {pitch1:+.1f}, モード: {mode1}")
 st.text(f"EQ: 低={eq1['low']}, 中={eq1['mid']}, 高={eq1['high']}")
 
 st.subheader("選択肢 2")
 st.audio(processed_file2)
-st.text(f"テンポ倍率: {tempo2}, キー変化: {pitch2:+.1f}, モード: {mode2}")
+st.text(f"曲名: {musicname2}, テンポ倍率: {tempo2}, キー変化: {pitch2:+.1f}, モード: {mode2}")
 st.text(f"EQ: 低={eq2['low']}, 中={eq2['mid']}, 高={eq2['high']}")
 
-# === ラジオボタン（選好を数値で保存） ===
+# ==== 選好ラジオボタン ====
 choice = st.radio("どちらが好みですか？", options=[1, 2], format_func=lambda x: f"選択肢 {x}")
 
 if st.button("送信"):
     row = [
-        file1, tempo1, pitch1, mode1, eq1['low'], eq1['mid'], eq1['high'],
-        file2, tempo2, pitch2, mode2, eq2['low'], eq2['mid'], eq2['high'],
-        int(choice)  # ← 数値として保存（1 または 2）
+        musicname1, tempo1, pitch1, mode1, eq1['low'], eq1['mid'], eq1['high'],
+        musicname2, tempo2, pitch2, mode2, eq2['low'], eq2['mid'], eq2['high'],
+        int(choice)  # ← 数値として保存
     ]
     save_to_sheet("研究", "アンケート集計", row)
     st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
