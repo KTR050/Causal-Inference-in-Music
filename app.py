@@ -1,18 +1,9 @@
 import os
-import base64
 import random
 import librosa
 import soundfile as sf
 import streamlit as st
 from save_to_sheet import save_to_sheet
-
-# ==== 認証情報 ====
-b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
-if b64_creds:
-    with open("credentials.json", "wb") as f:
-        f.write(base64.b64decode(b64_creds))
-else:
-    raise FileNotFoundError("GOOGLE_CREDENTIALS_B64 が設定されていません。")
 
 # ==== フォルダ設定 ====
 AUDIO_FOLDER = "データセット"
@@ -28,12 +19,15 @@ def extract_musicname_number(filename):
     parts = filename.split("_")
     return "_".join(parts).replace(".wav", "")
 
-# ==== 音声処理（テンポ変更のみ） ====
-def process_audio(input_path, tempo=1.0, output_path="output.wav"):
-    y, sr = librosa.load(input_path, sr=None, mono=True)
+# ==== 音声処理（テンポ変更のみ、キャッシュ付き） ====
+@st.cache_data
+def load_and_process_audio(file_path, tempo):
+    y, sr = librosa.load(file_path, sr=None, mono=True)
     if tempo != 1.0:
         y = librosa.effects.time_stretch(y, rate=tempo)
-    sf.write(output_path, y, sr)
+    temp_path = os.path.join(TEMP_FOLDER, f"{tempo}_{os.path.basename(file_path)}")
+    sf.write(temp_path, y, sr)
+    return temp_path
 
 # ==== 音声ファイル選択 ====
 files = [f for f in os.listdir(AUDIO_FOLDER) if f.endswith(".wav")]
@@ -52,22 +46,18 @@ musicnameB = extract_musicname_number(fileB)
 priceA = random.choice(price_options)
 priceB = random.choice(price_options)
 
-# ==== 音声生成 ====
-processed_fileA = os.path.join(TEMP_FOLDER, "processed_A.wav")
-processed_fileB = os.path.join(TEMP_FOLDER, "processed_B.wav")
-
-process_audio(os.path.join(AUDIO_FOLDER, fileA), tempoA, processed_fileA)
-process_audio(os.path.join(AUDIO_FOLDER, fileB), tempoB, processed_fileB)
+# ==== 音声生成（キャッシュ利用） ====
+processed_fileA = load_and_process_audio(os.path.join(AUDIO_FOLDER, fileA), tempoA)
+processed_fileB = load_and_process_audio(os.path.join(AUDIO_FOLDER, fileB), tempoB)
 
 # ==== UI ====
 st.title("音楽選好実験（順位付け形式）")
 
 st.markdown("""
-### 🎧 以下の2曲を聴いてください。
-そのうえで、**3つの選択肢（A, B, External Option）** に順位（1〜3）を付けてください。
-- 1 = 最も好ましい  
-- 2 = 次に好ましい  
-- 3 = 最も好ましくない  
+以下の2曲を聴いてください。そのうえで、3つの選択肢（曲A, 曲B, External Option）に順位（1〜3）を付けてください。
+- 1 = 最も好ましい
+- 2 = 次に好ましい
+- 3 = 最も好ましくない
 """)
 
 # 曲A
@@ -81,10 +71,10 @@ st.markdown(f"価格: {priceB} 円")
 st.audio(processed_fileB, format="audio/wav")
 
 # External Option
-st.markdown("🎵 External Option（どちらも好まないなど）")
+st.markdown("### External Option（どちらも好まないなど）")
 
 # プルダウン選択（順位付け）
-st.markdown("#### 🔢 順位を選択してください（1〜3の各数字は一度だけ使ってください）")
+st.markdown("#### 順位を選択してください（1〜3の各数字は一度だけ使ってください）")
 rank_options = [1, 2, 3]
 rankA = st.selectbox("曲 A の順位", rank_options, key="rankA")
 rankB = st.selectbox("曲 B の順位", rank_options, key="rankB")
@@ -110,5 +100,3 @@ if st.button("送信"):
         ]
         save_to_sheet("研究", "アンケート集計", row)
         st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
-
-
