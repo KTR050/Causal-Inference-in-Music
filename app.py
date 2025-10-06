@@ -3,7 +3,6 @@ import base64
 import random
 import librosa
 import soundfile as sf
-import numpy as np
 import streamlit as st
 from save_to_sheet import save_to_sheet
 
@@ -22,6 +21,7 @@ os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # ==== パラメータ ====
 bpm_options = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+price_options = [50, 100, 200, 400]
 
 # ==== ユーティリティ関数 ====
 def extract_musicname_number(filename):
@@ -62,6 +62,10 @@ while fileB == fileA:
 tempoB = random.choice(bpm_options)
 musicnameB = extract_musicname_number(fileB)
 
+# ==== ランダム価格生成 ====
+priceA = random.choice(price_options)
+priceB = random.choice(price_options)
+
 # ==== 音声生成 ====
 processed_fileA = os.path.join(TEMP_FOLDER, "processed_A.wav")
 processed_fileB = os.path.join(TEMP_FOLDER, "processed_B.wav")
@@ -81,20 +85,22 @@ st.markdown("""
 """)
 
 # 曲A
+st.markdown(f"### 💰 曲 A の価格: {priceA} 円")
 loop_audio_player(processed_fileA, "🎵 曲 A")
-st.text(f"曲名: {musicnameA}, テンポ倍率: {tempoA}")
 
 # 曲B
+st.markdown(f"### 💰 曲 B の価格: {priceB} 円")
 loop_audio_player(processed_fileB, "🎵 曲 B")
-st.text(f"曲名: {musicnameB}, テンポ倍率: {tempoB}")
 
-# プルダウン選択
+# External Option
+st.markdown("🎵 External Option（どちらも好まないなど）")
+
+# プルダウン選択（順位付け）
 st.markdown("#### 🔢 順位を選択してください（1〜3の各数字は一度だけ使ってください）")
-
 rank_options = [1, 2, 3]
 rankA = st.selectbox("曲 A の順位", rank_options, key="rankA")
 rankB = st.selectbox("曲 B の順位", rank_options, key="rankB")
-rankExt = st.selectbox("External Option（どちらも好まないなど）の順位", rank_options, key="rankExt")
+rankExt = st.selectbox("External Option の順位", rank_options, key="rankExt")
 
 # バリデーション（重複チェック）
 ranks = [rankA, rankB, rankExt]
@@ -110,8 +116,8 @@ if st.button("送信"):
         st.error("順位が重複しています。修正してください。")
     else:
         row = [
-            musicnameA, tempoA, rankA,
-            musicnameB, tempoB, rankB,
+            musicnameA, tempoA, priceA, rankA,
+            musicnameB, tempoB, priceB, rankB,
             rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
