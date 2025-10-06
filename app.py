@@ -81,10 +81,10 @@ st.markdown(f"価格: {priceB} 円")
 st.audio(processed_fileB, format="audio/wav")
 
 # External Option
-st.markdown("🎵 External Option（どちらも好まないなど）")
+st.markdown("External Option（どちらも好まないなど）")
 
 # プルダウン選択（順位付け）
-st.markdown("#### 🔢 順位を選択してください（1〜3の各数字は一度だけ使ってください）")
+st.markdown("####順位を選択してください（1〜3の各数字は一度だけ使ってください）")
 rank_options = [1, 2, 3]
 rankA = st.selectbox("曲 A の順位", rank_options, key="rankA")
 rankB = st.selectbox("曲 B の順位", rank_options, key="rankB")
@@ -93,7 +93,7 @@ rankExt = st.selectbox("External Option の順位", rank_options, key="rankExt")
 # バリデーション（重複チェック）
 ranks = [rankA, rankB, rankExt]
 if len(set(ranks)) < 3:
-    st.warning("⚠️ 各順位（1, 2, 3）は一度ずつ使用してください。")
+    st.warning("各順位（1, 2, 3）は一度ずつ使用してください。")
     valid = False
 else:
     valid = True
@@ -109,5 +109,6 @@ if st.button("送信"):
             rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
-        st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
+        st.success("回答がスプレッドシートに保存されました。ありがとうございました！")
+
 
