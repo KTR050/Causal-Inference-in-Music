@@ -35,20 +35,6 @@ def process_audio(input_path, tempo=1.0, output_path="output.wav"):
         y = librosa.effects.time_stretch(y, rate=tempo)
     sf.write(output_path, y, sr)
 
-# ==== ループ再生対応 ====
-def loop_audio_player(audio_path: str, label: str):
-    with open(audio_path, "rb") as audio_file:
-        audio_bytes = audio_file.read()
-    b64_audio = base64.b64encode(audio_bytes).decode()
-    audio_tag = f"""
-    <h5>{label}</h5>
-    <audio controls autoplay loop>
-        <source src="data:audio/wav;base64,{b64_audio}" type="audio/wav">
-        Your browser does not support the audio element.
-    </audio>
-    """
-    st.markdown(audio_tag, unsafe_allow_html=True)
-
 # ==== 音声ファイル選択 ====
 files = [f for f in os.listdir(AUDIO_FOLDER) if f.endswith(".wav")]
 
@@ -86,11 +72,13 @@ st.markdown("""
 
 # 曲A
 st.markdown(f"### 曲 A")
-loop_audio_player(processed_fileA, "価格: {priceA} 円")
+st.markdown(f"価格: {priceA} 円")
+st.audio(processed_fileA, format="audio/wav")
 
 # 曲B
 st.markdown(f"### 曲 B")
-loop_audio_player(processed_fileB, "価格: {priceB} 円")
+st.markdown(f"価格: {priceB} 円")
+st.audio(processed_fileB, format="audio/wav")
 
 # External Option
 st.markdown("🎵 External Option（どちらも好まないなど）")
@@ -122,4 +110,5 @@ if st.button("送信"):
         ]
         save_to_sheet("研究", "アンケート集計", row)
         st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
+
 
