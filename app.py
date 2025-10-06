@@ -85,12 +85,12 @@ st.markdown("""
 """)
 
 # 曲A
-st.markdown(f"### 💰 曲 A の価格: {priceA} 円")
-loop_audio_player(processed_fileA, "🎵 曲 A")
+st.markdown(f"### 曲 A")
+loop_audio_player(processed_fileA, "価格: {priceA} 円")
 
 # 曲B
-st.markdown(f"### 💰 曲 B の価格: {priceB} 円")
-loop_audio_player(processed_fileB, "🎵 曲 B")
+st.markdown(f"### 曲 B")
+loop_audio_player(processed_fileB, "価格: {priceB} 円")
 
 # External Option
 st.markdown("🎵 External Option（どちらも好まないなど）")
@@ -122,3 +122,4 @@ if st.button("送信"):
         ]
         save_to_sheet("研究", "アンケート集計", row)
         st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
+
