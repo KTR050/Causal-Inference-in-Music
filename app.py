@@ -20,7 +20,7 @@ TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # ==== パラメータ ====
-bpm_options = [0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+bpm_options = [0.8, 1.0, 1.4, 2.2]
 price_options = [50, 100, 200, 400]
 
 # ==== ユーティリティ関数 ====
@@ -110,5 +110,6 @@ if st.button("送信"):
         ]
         save_to_sheet("研究", "アンケート集計", row)
         st.success("回答がスプレッドシートに保存されました。ありがとうございました！")
+
 
 
