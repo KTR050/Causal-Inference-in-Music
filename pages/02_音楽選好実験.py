@@ -1,23 +1,29 @@
 import os
 import random
-import librosa
 import numpy as np
+import librosa
 import soundfile as sf
+import pyrubberband as pyrb
 import streamlit as st
+from scipy.signal import butter, lfilter
 from save_to_sheet import save_to_sheet
 
 # ==== フォルダ設定 ====
-DATASET_FOLDER = "データセット"   # メジャー/マイナー/ドラム
+AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-bpm_options = [0.8, 1, 1.4]       # ピッチ/テンポ倍率
+bpm_options = [0.8, 1.0, 1.4]
 price_options = [25, 50, 100]
 TRIALS_PER_PERSON = 10
 
-# ==== セッションチェック ====
+# ==== EQ設定 ====
+eq_bands = ["low", "mid", "high"]
+eq_values = [0.9, 1.0, 1.1]
+
+# ==== セッション管理 ====
 if "participant_info" not in st.session_state:
-    st.error("⚠️ 先に登録ページで情報を入力してください")
+    st.error("⚠️ 先に登録ページで情報を入力してください。")
     st.stop()
 
 if "trial" not in st.session_state:
@@ -28,132 +34,103 @@ trial = st.session_state.trial
 
 st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
-# ==== 音声読み込み関数 ====
-def load_audio(path):
-    y, sr = librosa.load(path, sr=None, mono=True)
-    return y, sr
+# ==== EQ関数 ====
+def apply_eq(y, sr, gains):
+    def bandpass(y, low, high):
+        b, a = butter(4, [low/(sr/2), high/(sr/2)], btype='band')
+        return lfilter(b, a, y)
+    low = bandpass(y, 20, 250) * gains["low"]
+    mid = bandpass(y, 250, 4000) * gains["mid"]
+    high = bandpass(y, 4000, 12000) * gains["high"]
+    mix = low + mid + high
+    return mix / np.max(np.abs(mix))
 
-# ==== ランダムファイル選択 ====
-def pick_random_file(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".wav")]
-    return os.path.join(folder, random.choice(files))
+# ==== トラック生成 ====
+def generate_mix():
+    key_type = random.choice(["メジャー", "マイナー"])
+    base_path = os.path.join(AUDIO_FOLDER, key_type)
 
-def pick_random_track_files(song_type):
-    base_path = os.path.join(DATASET_FOLDER, song_type)
-    bass_file = pick_random_file(os.path.join(base_path, "ベース"))
-    chord_file = pick_random_file(os.path.join(base_path, "コード"))
-    melody_file = pick_random_file(os.path.join(base_path, "メロディ"))
-    return bass_file, chord_file, melody_file
+    def pick_random_file(folder):
+        path = os.path.join(base_path, folder)
+        files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
+        return random.choice(files)
 
-def pick_random_drum_file():
-    drum_folder = os.path.join(DATASET_FOLDER, "ドラム")
-    return pick_random_file(drum_folder)
+    bass_file = pick_random_file("ベース")
+    chord_file = pick_random_file("コード")
+    melody_file = pick_random_file("メロディ")
+    drum_file = random.choice([os.path.join(AUDIO_FOLDER, "ドラム", f)
+                               for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム")) if f.endswith(".wav")])
 
-# ==== 曲生成（合成 + テンポ変更 + 正規化）====
-def generate_mix(bass_file, chord_file, melody_file, drum_file):
-    bass, sr = load_audio(bass_file)
-    chord, _ = load_audio(chord_file)
-    melody, _ = load_audio(melody_file)
-    drum, _ = load_audio(drum_file)
+    y_bass, sr = librosa.load(bass_file, sr=None)
+    y_chord, _ = librosa.load(chord_file, sr=None)
+    y_melody, _ = librosa.load(melody_file, sr=None)
+    y_drum, _ = librosa.load(drum_file, sr=None)
 
-    # 長さを min_len に揃えて合成
-    min_len = min(len(bass), len(chord), len(melody), len(drum))
-    mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
-    mix = mix.astype(np.float32)
+    min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
+    mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
 
-    # 合成後にテンポ変更
+    # ランダムEQ適用
+    eq_gain = {b: random.choice(eq_values) for b in eq_bands}
+    mix = apply_eq(mix, sr, eq_gain)
+
+    # テンポ変更（音程維持）
     tempo = random.choice(bpm_options)
     if tempo != 1.0:
-        mix = librosa.effects.time_stretch(mix, rate=tempo)
+        mix = pyrb.time_stretch(mix, sr, tempo)
 
-    # 正規化
+    # ランダムキー変換（-5〜+5半音）
+    semitone_shift = random.randint(-5, 5)
+    if semitone_shift != 0:
+        mix = pyrb.pitch_shift(mix, sr, semitone_shift)
+
     mix = mix / np.max(np.abs(mix))
-    return mix, sr, tempo
 
-# ==== 曲A/B生成（初回のみ）====
-if "mixA" not in st.session_state:
-    typeA = random.choice(["メジャー", "マイナー"])
-    bassA_file, chordA_file, melodyA_file = pick_random_track_files(typeA)
-    drumA_file = pick_random_drum_file()
-    mixA, srA, tempoA = generate_mix(bassA_file, chordA_file, melodyA_file, drumA_file)
+    return mix, sr, key_type, tempo, eq_gain, semitone_shift, os.path.basename(bass_file), os.path.basename(chord_file), os.path.basename(melody_file), os.path.basename(drum_file)
 
-    st.session_state.update({
-        "mixA": mixA, "srA": srA, "typeA": typeA, "tempoA": tempoA,
-        "bassA_file": bassA_file, "chordA_file": chordA_file,
-        "melodyA_file": melodyA_file, "drumA_file": drumA_file
-    })
+# ==== 曲A/B生成（1試行で固定） ====
+if f"mixA_{trial}" not in st.session_state:
+    st.session_state[f"mixA_{trial}"] = generate_mix()
+    st.session_state[f"mixB_{trial}"] = generate_mix()
 
-if "mixB" not in st.session_state:
-    typeB = random.choice(["メジャー", "マイナー"])
-    bassB_file, chordB_file, melodyB_file = pick_random_track_files(typeB)
-    drumB_file = pick_random_drum_file()
-    mixB, srB, tempoB = generate_mix(bassB_file, chordB_file, melodyB_file, drumB_file)
+mixA, srA, typeA, tempoA, eqA, keyShiftA, bassA, chordA, melodyA, drumA = st.session_state[f"mixA_{trial}"]
+mixB, srB, typeB, tempoB, eqB, keyShiftB, bassB, chordB, melodyB, drumB = st.session_state[f"mixB_{trial}"]
 
-    st.session_state.update({
-        "mixB": mixB, "srB": srB, "typeB": typeB, "tempoB": tempoB,
-        "bassB_file": bassB_file, "chordB_file": chordB_file,
-        "melodyB_file": melodyB_file, "drumB_file": drumB_file
-    })
+# ==== 一時保存 ====
+fileA = os.path.join(TEMP_FOLDER, f"mixA_{trial}.wav")
+fileB = os.path.join(TEMP_FOLDER, f"mixB_{trial}.wav")
+sf.write(fileA, mixA, srA)
+sf.write(fileB, mixB, srB)
 
-# ==== 曲A/B保存 & 再生 ====
-fileA = os.path.join(TEMP_FOLDER, f"trial_{trial}_A.wav")
-sf.write(fileA, st.session_state.mixA, st.session_state.srA)
-st.markdown("### 曲 A")
+# ==== UI ====
+priceA, priceB = random.choice(price_options), random.choice(price_options)
+st.markdown(f"### 曲A（{typeA}, {tempoA}x, key shift {keyShiftA:+}） 価格: {priceA}円")
 st.audio(fileA, format="audio/wav")
 
-fileB = os.path.join(TEMP_FOLDER, f"trial_{trial}_B.wav")
-sf.write(fileB, st.session_state.mixB, st.session_state.srB)
-st.markdown("### 曲 B")
+st.markdown(f"### 曲B（{typeB}, {tempoB}x, key shift {keyShiftB:+}） 価格: {priceB}円")
 st.audio(fileB, format="audio/wav")
 
-# ==== ランダム価格生成 ====
-priceA = random.choice(price_options)
-priceB = random.choice(price_options)
-st.write(f"価格A: {priceA} 円, 価格B: {priceB} 円")
+st.markdown("External Option（どちらも買わない）")
 
-# ==== 選好順位入力 ====
 rank_options = [1, 2, 3]
-rankA = st.selectbox("曲Aを買う", rank_options, key=f"rankA_{trial}")
-rankB = st.selectbox("曲Bを買う", rank_options, key=f"rankB_{trial}")
-rankExt = st.selectbox("どちらも買わない", rank_options, key=f"rankExt_{trial}")
+rankA = st.selectbox("曲Aの順位", rank_options, key=f"rankA_{trial}")
+rankB = st.selectbox("曲Bの順位", rank_options, key=f"rankB_{trial}")
+rankExt = st.selectbox("どちらも買わないの順位", rank_options, key=f"rankExt_{trial}")
 
-ranks = [rankA, rankB, rankExt]
-valid = len(set(ranks)) == 3
-
-# ==== 保存ボタン ====
-if st.button("送信"):
-    if not valid:
-        st.error("順位が重複しています。")
-    else:
+if len({rankA, rankB, rankExt}) < 3:
+    st.warning("各順位（1, 2, 3）は一度ずつ使用してください。")
+else:
+    if st.button("送信"):
         row = [
-            # 曲A
-            os.path.basename(st.session_state.bassA_file),
-            os.path.basename(st.session_state.chordA_file),
-            os.path.basename(st.session_state.melodyA_file),
-            os.path.basename(st.session_state.drumA_file),
-            priceA,
-            st.session_state.tempoA,
-            rankA,
-            # 曲B
-            os.path.basename(st.session_state.bassB_file),
-            os.path.basename(st.session_state.chordB_file),
-            os.path.basename(st.session_state.melodyB_file),
-            os.path.basename(st.session_state.drumB_file),
-            priceB,
-            st.session_state.tempoB,
-            rankB,
-            # 外部オプション
+            participant["id"], participant["gender"], participant["age"], trial,
+            bassA, chordA, melodyA, drumA, priceA, tempoA, str(eqA), keyShiftA, rankA,
+            bassB, chordB, melodyB, drumB, priceB, tempoB, str(eqB), keyShiftB, rankB,
             rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
-        st.success(f"試行 {trial}/{TRIALS_PER_PERSON} の回答を保存しました。")
+        st.success(f"試行 {trial} の回答を保存しました。")
 
         if trial < TRIALS_PER_PERSON:
             st.session_state.trial += 1
-            # 曲A/Bをクリアして次の試行で新曲生成
-            for key in ["mixA","srA","typeA","tempoA","bassA_file","chordA_file","melodyA_file","drumA_file",
-                        "mixB","srB","typeB","tempoB","bassB_file","chordB_file","melodyB_file","drumB_file"]:
-                st.session_state.pop(key, None)
             st.rerun()
         else:
             st.balloons()
