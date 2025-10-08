@@ -1,2 +1,5 @@
+# System-level dependencies for audio processing
 sox
 ffmpeg
+libsox-fmt-all
+libsox-dev
