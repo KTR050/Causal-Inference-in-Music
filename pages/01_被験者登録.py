@@ -35,7 +35,14 @@ st.markdown("""
 
 with st.form("register_form"):
     gender = st.radio("性別を選んでください", ["男性", "女性"])
-    age = st.number_input("年齢を入力してください", min_value=10, max_value=100, step=1)
+    age_input = st.text_input("年齢を入力してください（数字のみ）")
+    try:
+        age = int(age_input)
+    except ValueError:
+        age = None
+
+    if age is None:
+        st.warning("数字を入力してください")
     submitted = st.form_submit_button("登録する")
 
 if submitted:
