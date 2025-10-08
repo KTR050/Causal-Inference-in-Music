@@ -70,16 +70,21 @@ drum, _ = load_audio(drum_file)
 min_len = min(len(bass), len(chord), len(melody), len(drum))
 mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
 
+# float32に変換
+mix = mix.astype(np.float32)
+
 # ==== 合成後にテンポ変更（ピッチ調整） ====
 tempo = random.choice(bpm_options)
 if tempo != 1.0:
-    mix = librosa.effects.time_stretch(mix, tempo)
+    mix = librosa.effects.time_stretch(mix, rate=tempo)
 
-mix = mix / np.max(np.abs(mix))  # 正規化
+# 正規化
+mix = mix / np.max(np.abs(mix))
 
-# ==== 一時ファイルに保存 ====
+# 保存
 temp_file = os.path.join(TEMP_FOLDER, f"trial_{trial}.wav")
 sf.write(temp_file, mix, sr)
+
 
 # ==== Streamlit UI ====
 st.audio(temp_file, format="audio/wav")
