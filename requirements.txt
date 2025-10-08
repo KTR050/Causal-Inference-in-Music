@@ -5,3 +5,5 @@ soundfile
 gspread
 oauth2client 
 scipy
+protobuf
+requests
