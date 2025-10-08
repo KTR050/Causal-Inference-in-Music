@@ -18,7 +18,7 @@ TRIALS_PER_PERSON = 10
 
 # ==== EQ設定 ====
 eq_bands = ["low", "mid", "high"]
-eq_values = [0.9, 1.0, 1.1]
+eq_values = [0.95, 1.0, 1.05]
 
 # ==== セッション管理 ====
 if "participant_info" not in st.session_state:
@@ -79,13 +79,26 @@ def generate_mix():
     eq_gain = {b: random.choice(eq_values) for b in eq_bands}
     mix = apply_eq(mix, sr, eq_gain)
 
-    # ==== テンポ変更（ピッチ維持）====
+    mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # ==== テンポ変更（ピッチ維持）====
     tempo = random.choice(bpm_options)
+    mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)  # ← クレンジング追加
     if tempo != 1.0 and len(mix) > 2048:
         try:
             mix = librosa.effects.time_stretch(mix, rate=tempo)
         except Exception as e:
             st.warning(f"テンポ変更をスキップしました: {e}")
+
+    # ==== ランダムキー変換（半音単位）====
+    semitone_shift = random.randint(-5, 5)
+    if semitone_shift != 0:
+        try:
+            # バージョン差異対策 → すべてキーワード引数で指定
+            mix = librosa.effects.pitch_shift(y=mix, sr=sr, n_steps=semitone_shift)
+        except Exception as e:
+            st.warning(f"キー変更をスキップしました: {e}")
+
 
     # ==== ランダムキー変換（半音単位）====
     semitone_shift = random.randint(-5, 5)
