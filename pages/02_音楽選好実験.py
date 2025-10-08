@@ -42,7 +42,7 @@ def apply_eq(y, sr, gains):
     mid = bandpass(y, 250, 4000) * gains["mid"]
     high = bandpass(y, 4000, 12000) * gains["high"]
     mix = low + mid + high
-    return mix / np.max(np.abs(mix))
+    return mix / np.max(np.abs(mix) + 1e-6)
 
 # ==== トラック生成 ====
 def generate_mix():
@@ -52,21 +52,28 @@ def generate_mix():
     def pick_random_file(folder):
         path = os.path.join(base_path, folder)
         files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
+        if not files:
+            raise FileNotFoundError(f"{path} に音声ファイルがありません")
         return random.choice(files)
 
     bass_file = pick_random_file("ベース")
     chord_file = pick_random_file("コード")
     melody_file = pick_random_file("メロディ")
-    drum_file = random.choice([os.path.join(AUDIO_FOLDER, "ドラム", f)
-                               for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム")) if f.endswith(".wav")])
+    drum_file = random.choice([
+        os.path.join(AUDIO_FOLDER, "ドラム", f)
+        for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム")) if f.endswith(".wav")
+    ])
 
-    y_bass, sr = librosa.load(bass_file, sr=None)
-    y_chord, _ = librosa.load(chord_file, sr=None)
-    y_melody, _ = librosa.load(melody_file, sr=None)
-    y_drum, _ = librosa.load(drum_file, sr=None)
+    # ==== ロード（必ずモノラル化）====
+    y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
+    y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
+    y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
+    y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
+    # ==== 長さ合わせ ====
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
+    mix = mix.astype(np.float32)
 
     # ==== EQ適用 ====
     eq_gain = {b: random.choice(eq_values) for b in eq_bands}
@@ -74,19 +81,27 @@ def generate_mix():
 
     # ==== テンポ変更（ピッチ維持）====
     tempo = random.choice(bpm_options)
-    if tempo != 1.0:
-        mix = librosa.effects.time_stretch(mix, tempo)
+    if tempo != 1.0 and len(mix) > 2048:
+        try:
+            mix = librosa.effects.time_stretch(mix, rate=tempo)
+        except Exception as e:
+            st.warning(f"テンポ変更をスキップしました: {e}")
 
     # ==== ランダムキー変換（半音単位）====
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
-        mix = librosa.effects.pitch_shift(mix, sr, n_steps=semitone_shift)
+        try:
+            mix = librosa.effects.pitch_shift(mix, sr, n_steps=semitone_shift)
+        except Exception as e:
+            st.warning(f"キー変更をスキップしました: {e}")
 
-    mix = mix / np.max(np.abs(mix))
+    mix = mix / np.max(np.abs(mix) + 1e-6)
 
-    return mix, sr, key_type, tempo, eq_gain, semitone_shift, \
-           os.path.basename(bass_file), os.path.basename(chord_file), \
-           os.path.basename(melody_file), os.path.basename(drum_file)
+    return (
+        mix, sr, key_type, tempo, eq_gain, semitone_shift,
+        os.path.basename(bass_file), os.path.basename(chord_file),
+        os.path.basename(melody_file), os.path.basename(drum_file)
+    )
 
 # ==== 曲A/B生成 ====
 if f"mixA_{trial}" not in st.session_state:
