@@ -4,7 +4,6 @@ import numpy as np
 import librosa
 import soundfile as sf
 import streamlit as st
-from scipy.signal import butter, lfilter
 from save_to_sheet import save_to_sheet
 
 # ==== フォルダ設定 ====
@@ -12,13 +11,10 @@ AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
+# ==== 実験設定 ====
 bpm_options = [0.8, 1.0, 1.4]  # テンポ倍率
 price_options = [25, 50, 100]
 TRIALS_PER_PERSON = 10
-
-# ==== EQ設定（安全な範囲に調整）====
-eq_bands = ["low", "mid", "high"]
-eq_values = [0.99, 1.0, 1.01]  # ← 安全な範囲でブースト
 
 # ==== セッション管理 ====
 if "participant_info" not in st.session_state:
@@ -33,36 +29,12 @@ trial = st.session_state.trial
 
 st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
-# ==== EQ関数 ====
-def apply_eq(y, sr, gains):
-    def bandpass(y, low, high):
-        low = max(20, low)
-        high = min(sr / 2 * 0.95, high)
-        if low >= high:
-            return y
-        b, a = butter(4, [low/(sr/2), high/(sr/2)], btype='band')
-        return lfilter(b, a, y)
-
-    low = bandpass(y, 20, 250) * gains["low"]
-    mid = bandpass(y, 250, 4000) * gains["mid"]
-    high = bandpass(y, 4000, sr/2 * 0.95) * gains["high"]
-
-    mix = low + mid + high
-    if np.max(np.abs(mix)) < 1e-8:  # ほぼ無音なら元信号に戻す
-        mix = y
-    mix = np.nan_to_num(mix)
-
-    rms = np.sqrt(np.mean(mix**2))
-    if rms > 0:
-        mix = mix / (rms * 3)
-    return mix
-
-
 # ==== トラック生成 ====
 def generate_mix():
     key_type = random.choice(["メジャー", "マイナー"])
     base_path = os.path.join(AUDIO_FOLDER, key_type)
 
+    # フォルダからランダムに1ファイル選択
     def pick_random_file(folder):
         path = os.path.join(base_path, folder)
         files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
@@ -70,12 +42,14 @@ def generate_mix():
             raise FileNotFoundError(f"{path} に音声ファイルがありません")
         return random.choice(files)
 
+    # 各パートをランダム選択
     bass_file = pick_random_file("ベース")
     chord_file = pick_random_file("コード")
     melody_file = pick_random_file("メロディ")
     drum_file = random.choice([
         os.path.join(AUDIO_FOLDER, "ドラム", f)
-        for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム")) if f.endswith(".wav")
+        for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム"))
+        if f.endswith(".wav")
     ])
 
     # ==== ロード ====
@@ -87,13 +61,7 @@ def generate_mix():
     # ==== 長さ合わせ ====
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
-    mix = mix.astype(np.float32)
-
-    # ==== EQ適用 ====
-    eq_gain = {b: random.choice(eq_values) for b in eq_bands}
-    mix = apply_eq(mix, sr, eq_gain)
-
-    mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)
+    mix = np.nan_to_num(mix.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
 
     # ==== テンポ変更 ====
     tempo = random.choice(bpm_options)
@@ -103,7 +71,7 @@ def generate_mix():
         except Exception as e:
             st.warning(f"テンポ変更をスキップしました: {e}")
 
-    # ==== キー変更（ピッチシフト）====
+    # ==== キー変更 ====
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
         try:
@@ -111,9 +79,11 @@ def generate_mix():
         except Exception as e:
             st.warning(f"キー変更をスキップしました: {e}")
 
-    mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)
-    if np.max(np.abs(mix)) > 0:
-        mix = mix / np.max(np.abs(mix))
+    # 正規化
+    mix = mix / np.max(np.abs(mix) + 1e-6)
+
+    # ==== EQのダミー値（すべて1.0）====
+    eq_gain = {"low": 1.0, "mid": 1.0, "high": 1.0}
 
     return (
         mix, sr, key_type, tempo, eq_gain, semitone_shift,
@@ -129,7 +99,7 @@ if f"mixA_{trial}" not in st.session_state:
 mixA, srA, typeA, tempoA, eqA, keyShiftA, bassA, chordA, melodyA, drumA = st.session_state[f"mixA_{trial}"]
 mixB, srB, typeB, tempoB, eqB, keyShiftB, bassB, chordB, melodyB, drumB = st.session_state[f"mixB_{trial}"]
 
-# ==== 一時ファイルに保存 ====
+# ==== 一時ファイル保存 ====
 fileA = os.path.join(TEMP_FOLDER, f"mixA_{trial}.wav")
 fileB = os.path.join(TEMP_FOLDER, f"mixB_{trial}.wav")
 sf.write(fileA, mixA, srA)
@@ -143,7 +113,7 @@ st.audio(fileA, format="audio/wav")
 st.markdown(f"### 曲B（{typeB}, tempo={tempoB}x, key shift={keyShiftB:+}） 価格: {priceB}円")
 st.audio(fileB, format="audio/wav")
 
-st.markdown("External Option（どちらも買わない）")
+st.markdown("#### External Option（どちらも買わない）")
 
 rank_options = [1, 2, 3]
 rankA = st.selectbox("曲Aの順位", rank_options, key=f"rankA_{trial}")
@@ -156,13 +126,10 @@ else:
     if st.button("送信"):
         row = [
             participant["id"], participant["gender"], participant["age"], trial,
-            # 曲A情報
-            bassA, chordA, melodyA, drumA,
-            eqA["low"], eqA["mid"], eqA["high"], keyShiftA, priceA, tempoA, rankA,
-            # 曲B情報
-            bassB, chordB, melodyB, drumB,
-            eqB["low"], eqB["mid"], eqB["high"], keyShiftB, priceB, tempoB, rankB,
-            # 外的選択肢
+            bassA, chordA, melodyA, drumA, priceA, tempoA,
+            eqA["low"], eqA["mid"], eqA["high"], keyShiftA, rankA,
+            bassB, chordB, melodyB, drumB, priceB, tempoB,
+            eqB["low"], eqB["mid"], eqB["high"], keyShiftB, rankB,
             rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
