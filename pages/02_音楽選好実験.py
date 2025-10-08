@@ -18,7 +18,7 @@ TRIALS_PER_PERSON = 10
 
 # ==== EQ設定（安全な範囲に調整）====
 eq_bands = ["low", "mid", "high"]
-eq_values = [0.97, 1.0, 1.03]  # ← 安全な範囲でブースト
+eq_values = [0.99, 1.0, 1.01]  # ← 安全な範囲でブースト
 
 # ==== セッション管理 ====
 if "participant_info" not in st.session_state:
