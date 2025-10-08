@@ -118,8 +118,9 @@ if st.button("送信"):
         st.session_state.trial = generate_new_trial()
 
         # セレクトボックスをリセット
-        st.session_state.rankA = 1
-        st.session_state.rankB = 2
-        st.session_state.rankExt = 3
+        st.session_state["rankA"] = 1
+        st.session_state["rankB"] = 2
+        st.session_state["rankExt"] = 3
 
         st.experimental_rerun()  # ページを再レンダリング
+
