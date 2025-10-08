@@ -37,6 +37,8 @@ def generate_mix():
     def pick_random_file(folder):
         path = os.path.join(base_path, folder)
         files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
+        if not files:
+            raise FileNotFoundError(f"{path} に音声ファイルがありません")
         return random.choice(files)
 
     bass_file = pick_random_file("ベース")
