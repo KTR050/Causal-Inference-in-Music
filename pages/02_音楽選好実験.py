@@ -33,48 +33,67 @@ def load_audio(path):
     y, sr = librosa.load(path, sr=None, mono=True)
     return y, sr
 
-# ==== ランダム曲生成関数 ====
-def generate_mix():
-    song_choice = random.choice(["メジャー", "マイナー"])
-    base_path = os.path.join(DATASET_FOLDER, song_choice)
+# ==== ランダムファイル選択 ====
+def pick_random_file(folder):
+    files = [f for f in os.listdir(folder) if f.endswith(".wav")]
+    return os.path.join(folder, random.choice(files))
 
-    def pick_random_file(folder_name):
-        folder_path = os.path.join(base_path, folder_name)
-        files = [f for f in os.listdir(folder_path) if f.endswith(".wav")]
-        return os.path.join(folder_path, random.choice(files))
+def pick_random_track_files(song_type):
+    base_path = os.path.join(DATASET_FOLDER, song_type)
+    bass_file = pick_random_file(os.path.join(base_path, "ベース"))
+    chord_file = pick_random_file(os.path.join(base_path, "コード"))
+    melody_file = pick_random_file(os.path.join(base_path, "メロディ"))
+    return bass_file, chord_file, melody_file
 
-    bass, sr = load_audio(pick_random_file("ベース"))
-    chord, _ = load_audio(pick_random_file("コード"))
-    melody, _ = load_audio(pick_random_file("メロディ"))
-
-    # ドラムは共通フォルダ
+def pick_random_drum_file():
     drum_folder = os.path.join(DATASET_FOLDER, "ドラム")
-    drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
-    drum, _ = load_audio(os.path.join(drum_folder, random.choice(drum_files)))
+    return pick_random_file(drum_folder)
 
-    # 長さ揃え & 合成
+# ==== 曲生成（合成 + テンポ変更 + 正規化）====
+def generate_mix(bass_file, chord_file, melody_file, drum_file):
+    bass, sr = load_audio(bass_file)
+    chord, _ = load_audio(chord_file)
+    melody, _ = load_audio(melody_file)
+    drum, _ = load_audio(drum_file)
+
+    # 長さを min_len に揃えて合成
     min_len = min(len(bass), len(chord), len(melody), len(drum))
     mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
     mix = mix.astype(np.float32)
 
-    # 合成後にテンポ変更（ピッチ調整）
+    # 合成後にテンポ変更
     tempo = random.choice(bpm_options)
     if tempo != 1.0:
         mix = librosa.effects.time_stretch(mix, rate=tempo)
 
     # 正規化
     mix = mix / np.max(np.abs(mix))
-    return mix, sr, song_choice, tempo, bass, chord, melody, drum
+    return mix, sr, tempo
 
-
-# ==== 曲A/Bの生成（初回のみ）====
+# ==== 曲A/B生成（初回のみ）====
 if "mixA" not in st.session_state:
-    st.session_state.mixA, st.session_state.srA, st.session_state.typeA, st.session_state.tempoA, \
-    st.session_state.bassA, st.session_state.chordA, st.session_state.melodyA, st.session_state.drumA = generate_mix()
+    typeA = random.choice(["メジャー", "マイナー"])
+    bassA_file, chordA_file, melodyA_file = pick_random_track_files(typeA)
+    drumA_file = pick_random_drum_file()
+    mixA, srA, tempoA = generate_mix(bassA_file, chordA_file, melodyA_file, drumA_file)
+
+    st.session_state.update({
+        "mixA": mixA, "srA": srA, "typeA": typeA, "tempoA": tempoA,
+        "bassA_file": bassA_file, "chordA_file": chordA_file,
+        "melodyA_file": melodyA_file, "drumA_file": drumA_file
+    })
 
 if "mixB" not in st.session_state:
-    st.session_state.mixB, st.session_state.srB, st.session_state.typeB, st.session_state.tempoB, \
-    st.session_state.bassB, st.session_state.chordB, st.session_state.melodyB, st.session_state.drumB = generate_mix()
+    typeB = random.choice(["メジャー", "マイナー"])
+    bassB_file, chordB_file, melodyB_file = pick_random_track_files(typeB)
+    drumB_file = pick_random_drum_file()
+    mixB, srB, tempoB = generate_mix(bassB_file, chordB_file, melodyB_file, drumB_file)
+
+    st.session_state.update({
+        "mixB": mixB, "srB": srB, "typeB": typeB, "tempoB": tempoB,
+        "bassB_file": bassB_file, "chordB_file": chordB_file,
+        "melodyB_file": melodyB_file, "drumB_file": drumB_file
+    })
 
 # ==== 曲A/B保存 & 再生 ====
 fileA = os.path.join(TEMP_FOLDER, f"trial_{trial}_A.wav")
@@ -107,21 +126,23 @@ if st.button("送信"):
         st.error("順位が重複しています。")
     else:
         row = [
-            participant["id"], participant["gender"], participant["age"],
-            trial,
-            # 曲A情報
-            st.session_state.typeA, os.path.basename(st.session_state.bassA),
-            os.path.basename(st.session_state.chordA),
-            os.path.basename(st.session_state.melodyA),
-            os.path.basename(st.session_state.drumA),
-            st.session_state.tempoA, priceA, rankA,
-            # 曲B情報
-            st.session_state.typeB, os.path.basename(st.session_state.bassB),
-            os.path.basename(st.session_state.chordB),
-            os.path.basename(st.session_state.melodyB),
-            os.path.basename(st.session_state.drumB),
-            st.session_state.tempoB, priceB, rankB,
-            # External Option
+            # 曲A
+            os.path.basename(st.session_state.bassA_file),
+            os.path.basename(st.session_state.chordA_file),
+            os.path.basename(st.session_state.melodyA_file),
+            os.path.basename(st.session_state.drumA_file),
+            priceA,
+            st.session_state.tempoA,
+            rankA,
+            # 曲B
+            os.path.basename(st.session_state.bassB_file),
+            os.path.basename(st.session_state.chordB_file),
+            os.path.basename(st.session_state.melodyB_file),
+            os.path.basename(st.session_state.drumB_file),
+            priceB,
+            st.session_state.tempoB,
+            rankB,
+            # 外部オプション
             rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
@@ -130,8 +151,8 @@ if st.button("送信"):
         if trial < TRIALS_PER_PERSON:
             st.session_state.trial += 1
             # 曲A/Bをクリアして次の試行で新曲生成
-            for key in ["mixA","srA","typeA","tempoA","bassA","chordA","melodyA","drumA",
-                        "mixB","srB","typeB","tempoB","bassB","chordB","melodyB","drumB"]:
+            for key in ["mixA","srA","typeA","tempoA","bassA_file","chordA_file","melodyA_file","drumA_file",
+                        "mixB","srB","typeB","tempoB","bassB_file","chordB_file","melodyB_file","drumB_file"]:
                 st.session_state.pop(key, None)
             st.rerun()
         else:
