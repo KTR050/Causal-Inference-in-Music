@@ -79,6 +79,7 @@ def generate_mix():
 
     # ==== テンポ変更（ピッチ維持）====
     tempo = random.choice(bpm_options)
+    mix = np.nan_to_num(mix)
     if tempo != 1.0 and len(mix) > 2048:
         try:
             mix = librosa.effects.time_stretch(mix, rate=tempo)
@@ -111,10 +112,10 @@ sf.write(fileB, mixB, srB)
 priceA = random.choice(price_options)
 priceB = random.choice(price_options)
 
-st.markdown(f"### 曲A（{typeA}, tempo={tempoA}x, key shift={keyShiftA:+}） 価格: {priceA}円")
+st.markdown(f"### 曲A　価格: {priceA}円")
 st.audio(fileA, format="audio/wav")
 
-st.markdown(f"### 曲B（{typeB}, tempo={tempoB}x, key shift={keyShiftB:+}） 価格: {priceB}円")
+st.markdown(f"### 曲B　価格: {priceB}円")
 st.audio(fileB, format="audio/wav")
 
 st.markdown("### External Option（どちらも買わない）")
