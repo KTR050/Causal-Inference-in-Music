@@ -1,4 +1,4 @@
-# ==== Web UI ====
+# ==== Streamlit UI ====
 streamlit==1.38.0
 
 # ==== Audio Processing ====
@@ -8,7 +8,7 @@ scipy==1.14.1
 soundfile==0.12.1
 sox==1.5.0
 
-# ==== Google Sheets ====
+# ==== Google Sheets Integration ====
 gspread==6.1.2
 oauth2client==4.1.3
 google-auth==2.34.0
