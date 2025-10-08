@@ -58,32 +58,39 @@ def generate_mix():
     y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
     y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-    # ==== 長さ合わせ ====
-    min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
-    mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
-    mix = np.nan_to_num(mix.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-
     # ==== テンポ変更 ====
     tempo = random.choice(bpm_options)
-    if tempo != 1.0 and len(mix) > 2048:
+    if tempo != 1.0:
         try:
-            mix = librosa.effects.time_stretch(mix, rate=tempo)
+            y_bass = librosa.effects.time_stretch(y_bass, rate=tempo)
+            y_chord = librosa.effects.time_stretch(y_chord, rate=tempo)
+            y_melody = librosa.effects.time_stretch(y_melody, rate=tempo)
+            y_drum = librosa.effects.time_stretch(y_drum, rate=tempo)
         except Exception as e:
             st.warning(f"テンポ変更をスキップしました: {e}")
 
-    # ==== キー変更 ====
+    # ==== キー変更（ドラム以外）====
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
         try:
-            mix = librosa.effects.pitch_shift(y=mix, sr=sr, n_steps=semitone_shift)
+            y_bass = librosa.effects.pitch_shift(y=y_bass, sr=sr, n_steps=semitone_shift)
+            y_chord = librosa.effects.pitch_shift(y=y_chord, sr=sr, n_steps=semitone_shift)
+            y_melody = librosa.effects.pitch_shift(y=y_melody, sr=sr, n_steps=semitone_shift)
         except Exception as e:
             st.warning(f"キー変更をスキップしました: {e}")
 
-    # 正規化
-    mix = mix / np.max(np.abs(mix) + 1e-6)
+    # ==== 長さ合わせ ====
+    min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
+    mix = (
+        y_bass[:min_len]
+        + y_chord[:min_len]
+        + y_melody[:min_len]
+        + y_drum[:min_len]
+    )
+    mix = np.nan_to_num(mix.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
 
-    # ==== EQのダミー値（すべて1.0）====
-    eq_gain = {"low": 1.0, "mid": 1.0, "high": 1.0}
+    # ==== 正規化 ====
+    mix = mix / np.max(np.abs(mix) + 1e-6)
 
     return (
         mix, sr, key_type, tempo, eq_gain, semitone_shift,
@@ -127,9 +134,9 @@ else:
         row = [
             participant["id"], participant["gender"], participant["age"], trial,
             bassA, chordA, melodyA, drumA, priceA, tempoA,
-            eqA["low"], eqA["mid"], eqA["high"], keyShiftA, rankA,
+            keyShiftA, rankA,
             bassB, chordB, melodyB, drumB, priceB, tempoB,
-            eqB["low"], eqB["mid"], eqB["high"], keyShiftB, rankB,
+            keyShiftB, rankB,
             rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
