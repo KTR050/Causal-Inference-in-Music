@@ -1,7 +1,6 @@
 import os
 import base64
 import random
-import uuid
 import librosa
 import soundfile as sf
 import streamlit as st
@@ -13,8 +12,7 @@ if b64_creds:
     with open("credentials.json", "wb") as f:
         f.write(base64.b64decode(b64_creds))
 else:
-    st.error("環境変数 GOOGLE_CREDENTIALS_B64 が設定されていません。")
-    st.stop()
+    raise FileNotFoundError("GOOGLE_CREDENTIALS_B64 が設定されていません。")
 
 # ==== フォルダ設定 ====
 AUDIO_FOLDER = "データセット"
@@ -22,38 +20,20 @@ TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # ==== パラメータ ====
-# 元の設定を維持（倍率を広く取る）
 bpm_options = [0.8, 1.0, 1.4, 2.2]
 price_options = [50, 100, 200]
 
 # ==== ユーティリティ関数 ====
 def extract_musicname_number(filename):
-    """ファイル名から拡張子を除去"""
-    return os.path.splitext(filename)[0]
+    parts = filename.split("_")
+    return "_".join(parts).replace(".wav", "")
 
-# ==== 音声処理（Soxを使用） ====
-import sox
-import soundfile as sf
-import librosa
-
+# ==== 音声処理（テンポ変更のみ） ====
 def process_audio(input_path, tempo=1.0, output_path="output.wav"):
-    """
-    Soxを使った高品質なテンポ変更。
-    Rubberbandが使えない環境（Streamlit Cloud）でも安定動作。
-    """
-    try:
-        # tempo=1.0なら単純コピー
-        if tempo == 1.0:
-            y, sr = librosa.load(input_path, sr=None, mono=True)
-            sf.write(output_path, y, sr)
-        else:
-            tfm = sox.Transformer()
-            tfm.tempo(tempo)
-            tfm.build(input_path, output_path)
-    except Exception as e:
-        st.error(f"音声処理中にエラーが発生しました: {e}")
-        raise
-
+    y, sr = librosa.load(input_path, sr=None, mono=True)
+    if tempo != 1.0:
+        y = librosa.effects.time_stretch(y, rate=tempo)
+    sf.write(output_path, y, sr)
 
 # ==== 音声ファイル選択 ====
 files = [f for f in os.listdir(AUDIO_FOLDER) if f.endswith(".wav")]
@@ -72,10 +52,9 @@ musicnameB = extract_musicname_number(fileB)
 priceA = random.choice(price_options)
 priceB = random.choice(price_options)
 
-# ==== 一時ファイル（UUIDで一意名生成） ====
-uid = uuid.uuid4().hex
-processed_fileA = os.path.join(TEMP_FOLDER, f"processed_A_{uid}.wav")
-processed_fileB = os.path.join(TEMP_FOLDER, f"processed_B_{uid}.wav")
+# ==== 音声生成 ====
+processed_fileA = os.path.join(TEMP_FOLDER, "processed_A.wav")
+processed_fileB = os.path.join(TEMP_FOLDER, "processed_B.wav")
 
 process_audio(os.path.join(AUDIO_FOLDER, fileA), tempoA, processed_fileA)
 process_audio(os.path.join(AUDIO_FOLDER, fileB), tempoB, processed_fileB)
@@ -102,16 +81,16 @@ st.markdown(f"価格: {priceB} 円")
 st.audio(processed_fileB, format="audio/wav")
 
 # External Option
-st.markdown("### External Option（どちらも好まないなど）")
+st.markdown("External Option（どちらも好まないなど）")
 
-# 順位選択
-st.markdown("#### 順位を選択してください（1〜3の各数字は一度だけ使ってください）")
+# プルダウン選択（順位付け）
+st.markdown("####順位を選択してください（1〜3の各数字は一度だけ使ってください）")
 rank_options = [1, 2, 3]
 rankA = st.selectbox("曲 A の順位", rank_options, key="rankA")
 rankB = st.selectbox("曲 B の順位", rank_options, key="rankB")
 rankExt = st.selectbox("External Option の順位", rank_options, key="rankExt")
 
-# バリデーション
+# バリデーション（重複チェック）
 ranks = [rankA, rankB, rankExt]
 if len(set(ranks)) < 3:
     st.warning("各順位（1, 2, 3）は一度ずつ使用してください。")
@@ -129,17 +108,5 @@ if st.button("送信"):
             musicnameB, tempoB, priceB, rankB,
             rankExt
         ]
-        try:
-            save_to_sheet("研究", "アンケート集計", row)
-            st.success("✅ 回答がスプレッドシートに保存されました。ありがとうございました！")
-        except Exception as e:
-            st.error(f"⚠️ スプレッドシート保存中にエラーが発生しました: {e}")
-            # ローカルバックアップ
-            try:
-                with open("backup_responses.csv", "a", encoding="utf-8") as f:
-                    f.write(",".join(map(str, row)) + "\n")
-                st.info("ローカルにバックアップを保存しました。")
-            except Exception as e2:
-                st.error(f"バックアップ保存にも失敗しました: {e2}")
-
-
+        save_to_sheet("研究", "アンケート集計", row)
+        st.success("回答がスプレッドシートに保存されました。ありがとうございました！")
