@@ -52,8 +52,9 @@ def generate_mix():
     drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
     drum, _ = load_audio(os.path.join(drum_folder, random.choice(drum_files)))
 
-    # 合成
-    mix = bass + chord + melody + drum
+    # 長さ揃え & 合成
+    min_len = min(len(bass), len(chord), len(melody), len(drum))
+    mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
     mix = mix.astype(np.float32)
 
     # 合成後にテンポ変更（ピッチ調整）
@@ -64,6 +65,7 @@ def generate_mix():
     # 正規化
     mix = mix / np.max(np.abs(mix))
     return mix, sr, song_choice, tempo, bass, chord, melody, drum
+
 
 # ==== 曲A/Bの生成（初回のみ）====
 if "mixA" not in st.session_state:
