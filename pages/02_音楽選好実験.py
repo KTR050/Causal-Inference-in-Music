@@ -33,9 +33,8 @@ def load_audio(path):
     y, sr = librosa.load(path, sr=None, mono=True)
     return y, sr
 
-# ==== ランダム曲生成関数（ベース・コード・メロディ・ドラム合成＋ピッチ調整） ====
+# ==== ランダム曲生成関数 ====
 def generate_mix():
-    # 曲タイプ選択
     song_choice = random.choice(["メジャー", "マイナー"])
     base_path = os.path.join(DATASET_FOLDER, song_choice)
 
@@ -47,37 +46,42 @@ def generate_mix():
     bass, sr = load_audio(pick_random_file("ベース"))
     chord, _ = load_audio(pick_random_file("コード"))
     melody, _ = load_audio(pick_random_file("メロディ"))
-    
+
     # ドラムは共通フォルダ
     drum_folder = os.path.join(DATASET_FOLDER, "ドラム")
     drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
     drum, _ = load_audio(os.path.join(drum_folder, random.choice(drum_files)))
 
-    # 長さ揃え & 合成
-    min_len = min(len(bass), len(chord), len(melody), len(drum))
-    mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
+    # 合成
+    mix = bass + chord + melody + drum
     mix = mix.astype(np.float32)
 
     # 合成後にテンポ変更（ピッチ調整）
     tempo = random.choice(bpm_options)
     if tempo != 1.0:
         mix = librosa.effects.time_stretch(mix, rate=tempo)
-    
+
     # 正規化
     mix = mix / np.max(np.abs(mix))
     return mix, sr, song_choice, tempo, bass, chord, melody, drum
 
-# ==== 曲A生成 ====
-mixA, srA, typeA, tempoA, bassA, chordA, melodyA, drumA = generate_mix()
+# ==== 曲A/Bの生成（初回のみ）====
+if "mixA" not in st.session_state:
+    st.session_state.mixA, st.session_state.srA, st.session_state.typeA, st.session_state.tempoA, \
+    st.session_state.bassA, st.session_state.chordA, st.session_state.melodyA, st.session_state.drumA = generate_mix()
+
+if "mixB" not in st.session_state:
+    st.session_state.mixB, st.session_state.srB, st.session_state.typeB, st.session_state.tempoB, \
+    st.session_state.bassB, st.session_state.chordB, st.session_state.melodyB, st.session_state.drumB = generate_mix()
+
+# ==== 曲A/B保存 & 再生 ====
 fileA = os.path.join(TEMP_FOLDER, f"trial_{trial}_A.wav")
-sf.write(fileA, mixA, srA)
+sf.write(fileA, st.session_state.mixA, st.session_state.srA)
 st.markdown("### 曲 A")
 st.audio(fileA, format="audio/wav")
 
-# ==== 曲B生成 ====
-mixB, srB, typeB, tempoB, bassB, chordB, melodyB, drumB = generate_mix()
 fileB = os.path.join(TEMP_FOLDER, f"trial_{trial}_B.wav")
-sf.write(fileB, mixB, srB)
+sf.write(fileB, st.session_state.mixB, st.session_state.srB)
 st.markdown("### 曲 B")
 st.audio(fileB, format="audio/wav")
 
@@ -104,11 +108,17 @@ if st.button("送信"):
             participant["id"], participant["gender"], participant["age"],
             trial,
             # 曲A情報
-            typeA, os.path.basename(bassA), os.path.basename(chordA),
-            os.path.basename(melodyA), os.path.basename(drumA), tempoA, priceA, rankA,
+            st.session_state.typeA, os.path.basename(st.session_state.bassA),
+            os.path.basename(st.session_state.chordA),
+            os.path.basename(st.session_state.melodyA),
+            os.path.basename(st.session_state.drumA),
+            st.session_state.tempoA, priceA, rankA,
             # 曲B情報
-            typeB, os.path.basename(bassB), os.path.basename(chordB),
-            os.path.basename(melodyB), os.path.basename(drumB), tempoB, priceB, rankB,
+            st.session_state.typeB, os.path.basename(st.session_state.bassB),
+            os.path.basename(st.session_state.chordB),
+            os.path.basename(st.session_state.melodyB),
+            os.path.basename(st.session_state.drumB),
+            st.session_state.tempoB, priceB, rankB,
             # External Option
             rankExt
         ]
@@ -117,6 +127,10 @@ if st.button("送信"):
 
         if trial < TRIALS_PER_PERSON:
             st.session_state.trial += 1
+            # 曲A/Bをクリアして次の試行で新曲生成
+            for key in ["mixA","srA","typeA","tempoA","bassA","chordA","melodyA","drumA",
+                        "mixB","srB","typeB","tempoB","bassB","chordB","melodyB","drumB"]:
+                st.session_state.pop(key, None)
             st.rerun()
         else:
             st.balloons()
