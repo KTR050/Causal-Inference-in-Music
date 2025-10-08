@@ -12,9 +12,10 @@ AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-bpm_options = [0.8, 1.0, 1.4]
-price_options = [25, 50, 100]
-TRIALS_PER_PERSON = 10
+# ==== 実験パラメータ ====
+bpm_options = [0.8, 1.0, 1.4]       # テンポ倍率
+price_options = [25, 50, 100]       # 価格選択肢
+TRIALS_PER_PERSON = 10              # 試行回数
 
 # ==== EQ設定 ====
 eq_bands = ["low", "mid", "high"]
@@ -35,17 +36,23 @@ st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
 # ==== EQ関数 ====
 def apply_eq(y, sr, gains):
+    """ハイ・ミッド・ロウをランダムにブースト/カット"""
     def bandpass(y, low, high):
         b, a = butter(4, [low/(sr/2), high/(sr/2)], btype='band')
         return lfilter(b, a, y)
+
     low = bandpass(y, 20, 250) * gains["low"]
     mid = bandpass(y, 250, 4000) * gains["mid"]
     high = bandpass(y, 4000, 12000) * gains["high"]
+
     mix = low + mid + high
-    return mix / np.max(np.abs(mix) + 1e-6)
+    if np.max(np.abs(mix)) > 0:
+        mix = mix / np.max(np.abs(mix))
+    return mix
 
 # ==== トラック生成 ====
 def generate_mix():
+    """ベース・コード・メロディ・ドラムを合成し、EQ・テンポ・キー変換を適用"""
     key_type = random.choice(["メジャー", "マイナー"])
     base_path = os.path.join(AUDIO_FOLDER, key_type)
 
@@ -53,7 +60,7 @@ def generate_mix():
         path = os.path.join(base_path, folder)
         files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
         if not files:
-            raise FileNotFoundError(f"{path} に音声ファイルがありません")
+            raise FileNotFoundError(f"{path} に音声ファイルがありません。")
         return random.choice(files)
 
     bass_file = pick_random_file("ベース")
@@ -64,13 +71,13 @@ def generate_mix():
         for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム")) if f.endswith(".wav")
     ])
 
-    # ==== ロード（必ずモノラル化）====
+    # ==== ロード（モノラル化）====
     y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
     y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
     y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
     y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-    # ==== 長さ合わせ ====
+    # ==== 長さを揃える ====
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
     mix = mix.astype(np.float32)
@@ -81,9 +88,8 @@ def generate_mix():
 
     mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # ==== テンポ変更（ピッチ維持）====
+    # ==== テンポ変更（ピッチ維持）====
     tempo = random.choice(bpm_options)
-    mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)  # ← クレンジング追加
     if tempo != 1.0 and len(mix) > 2048:
         try:
             mix = librosa.effects.time_stretch(mix, rate=tempo)
@@ -94,21 +100,14 @@ def generate_mix():
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
         try:
-            # バージョン差異対策 → すべてキーワード引数で指定
             mix = librosa.effects.pitch_shift(y=mix, sr=sr, n_steps=semitone_shift)
         except Exception as e:
             st.warning(f"キー変更をスキップしました: {e}")
 
-
-    # ==== ランダムキー変換（半音単位）====
-    semitone_shift = random.randint(-5, 5)
-    if semitone_shift != 0:
-        try:
-            mix = librosa.effects.pitch_shift(mix, sr, n_steps=semitone_shift)
-        except Exception as e:
-            st.warning(f"キー変更をスキップしました: {e}")
-
-    mix = mix / np.max(np.abs(mix) + 1e-6)
+    # ==== 正規化・クリッピング ====
+    if np.max(np.abs(mix)) > 0:
+        mix = mix / np.max(np.abs(mix))
+    mix = np.clip(mix, -1.0, 1.0)
 
     return (
         mix, sr, key_type, tempo, eq_gain, semitone_shift,
