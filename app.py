@@ -104,23 +104,21 @@ if st.button("送信"):
     if not valid:
         st.error("順位が重複しています。修正してください。")
     else:
-        # 保存処理（例: Google Sheets）
+        # 保存処理
         row = [
             trial['musicnameA'], trial['tempoA'], trial['priceA'], rankA,
             trial['musicnameB'], trial['tempoB'], trial['priceB'], rankB,
             rankExt
         ]
-        # save_to_sheet("研究", "アンケート集計", row)  # 既存の関数を使用
+        # save_to_sheet(...)
 
         st.success("回答が保存されました！新しい曲を表示します。")
 
-        # 新しい試行を生成して更新
+        # 新しい試行を生成
         st.session_state.trial = generate_new_trial()
 
-        # セレクトボックスをリセット
-        st.session_state["rankA"] = 1
-        st.session_state["rankB"] = 2
-        st.session_state["rankExt"] = 3
+        # page rerun して selectbox を初期化
+        st.experimental_rerun()
 
-        st.experimental_rerun()  # ページを再レンダリング
+
 
