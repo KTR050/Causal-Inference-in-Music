@@ -32,20 +32,29 @@ def extract_musicname_number(filename):
     """ファイル名から拡張子を除去"""
     return os.path.splitext(filename)[0]
 
-# ==== 音声処理（Rubber Bandを使用） ====
+# ==== 音声処理（Soxを使用） ====
+import sox
+import soundfile as sf
+import librosa
+
 def process_audio(input_path, tempo=1.0, output_path="output.wav"):
     """
-    Rubber Band Library を用いた高品質なテンポ変更。
-    ピッチを保持したままテンポのみを変更。
+    Soxを使った高品質なテンポ変更。
+    Rubberbandが使えない環境（Streamlit Cloud）でも安定動作。
     """
     try:
-        y, sr = librosa.load(input_path, sr=None, mono=True)
-        if tempo != 1.0:
-            y = pyrb.time_stretch(y, sr, tempo)
-        sf.write(output_path, y, sr)
+        # tempo=1.0なら単純コピー
+        if tempo == 1.0:
+            y, sr = librosa.load(input_path, sr=None, mono=True)
+            sf.write(output_path, y, sr)
+        else:
+            tfm = sox.Transformer()
+            tfm.tempo(tempo)
+            tfm.build(input_path, output_path)
     except Exception as e:
         st.error(f"音声処理中にエラーが発生しました: {e}")
         raise
+
 
 # ==== 音声ファイル選択 ====
 files = [f for f in os.listdir(AUDIO_FOLDER) if f.endswith(".wav")]
@@ -133,3 +142,4 @@ if st.button("送信"):
                 st.info("ローカルにバックアップを保存しました。")
             except Exception as e2:
                 st.error(f"バックアップ保存にも失敗しました: {e2}")
+
