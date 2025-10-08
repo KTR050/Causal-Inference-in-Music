@@ -1,2 +1,2 @@
-rubberband-cli
+sox
 ffmpeg
