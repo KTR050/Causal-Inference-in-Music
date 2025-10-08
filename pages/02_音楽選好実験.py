@@ -30,37 +30,60 @@ trial = st.session_state.trial
 st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
 # ==== ランダム曲選択 ====
-songs = [d for d in os.listdir(DATASET_FOLDER) if os.path.isdir(os.path.join(DATASET_FOLDER, d)) and d != "ドラム"]
-if len(songs) == 0:
-    st.error("データセットに曲フォルダがありません。")
+songs = [d for d in os.listdir(DATASET_FOLDER) 
+         if os.path.isdir(os.path.join(DATASET_FOLDER, d)) and d != "ドラム"]
+
+if not songs:
+    st.error("データセットに曲フォルダが存在しません")
     st.stop()
 
 song_choice = random.choice(songs)
-key_choice = random.choice(["メジャー", "マイナー"])
+
+# メジャー/マイナーサブフォルダの自動取得
+key_options = [d for d in os.listdir(os.path.join(DATASET_FOLDER, song_choice)) 
+               if os.path.isdir(os.path.join(DATASET_FOLDER, song_choice, d))]
+if not key_options:
+    st.error(f"{song_choice} にメジャー/マイナーサブフォルダが存在しません")
+    st.stop()
+key_choice = random.choice(key_options)
+
 base_path = os.path.join(DATASET_FOLDER, song_choice, key_choice)
 
-# 各パートのランダム選択
-def pick_random_file(folder):
-    files = [f for f in os.listdir(folder) if f.endswith(".wav")]
-    if not files:
-        st.error(f"{folder} に wav ファイルがありません。")
+# ==== パートごとのランダム選択関数 ====
+def pick_random_file(folder_name):
+    folder_path = os.path.join(base_path, folder_name)
+    if not os.path.exists(folder_path):
+        st.error(f"{folder_name} フォルダが存在しません: {folder_path}")
         st.stop()
-    return random.choice(files)
+    files = [f for f in os.listdir(folder_path) if f.endswith(".wav")]
+    if not files:
+        st.error(f"{folder_name} フォルダに WAV ファイルがありません")
+        st.stop()
+    return os.path.join(folder_path, random.choice(files))
 
-bass_file = pick_random_file(os.path.join(base_path, "ベース"))
-chord_file = pick_random_file(os.path.join(base_path, "コード"))
-melody_file = pick_random_file(os.path.join(base_path, "メロディ"))
-drum_file = pick_random_file(DRUM_FOLDER)
+bass_file = pick_random_file("ベース")
+chord_file = pick_random_file("コード")
+melody_file = pick_random_file("メロディ")
+
+# ドラムは共通フォルダからランダム選択
+if not os.path.exists(DRUM_FOLDER):
+    st.error(f"ドラムフォルダが存在しません: {DRUM_FOLDER}")
+    st.stop()
+drum_files = [f for f in os.listdir(DRUM_FOLDER) if f.endswith(".wav")]
+if not drum_files:
+    st.error(f"ドラムフォルダに WAV ファイルがありません: {DRUM_FOLDER}")
+    st.stop()
+drum_file = os.path.join(DRUM_FOLDER, random.choice(drum_files))
 
 # ==== 音声読み込み ====
 def load_audio(path):
     y, sr = librosa.load(path, sr=None, mono=True)
     return y, sr
 
-bass, sr = load_audio(os.path.join(base_path, "ベース", bass_file))
-chord, _ = load_audio(os.path.join(base_path, "コード", chord_file))
-melody, _ = load_audio(os.path.join(base_path, "メロディ", melody_file))
-drum, _ = load_audio(os.path.join(DRUM_FOLDER, drum_file))
+bass, sr = load_audio(bass_file)
+chord, _ = load_audio(chord_file)
+melody, _ = load_audio(melody_file)
+drum, _ = load_audio(drum_file)
 
 # ==== 長さ揃え & 合成 ====
 min_len = min(len(bass), len(chord), len(melody), len(drum))
@@ -74,7 +97,7 @@ sf.write(temp_file, mix, sr)
 # ==== Streamlit UI ====
 st.audio(temp_file, format="audio/wav")
 st.write(f"曲: {song_choice}, キー: {key_choice}")
-st.write(f"ベース: {bass_file}, コード: {chord_file}, メロディ: {melody_file}, ドラム: {drum_file}")
+st.write(f"ベース: {os.path.basename(bass_file)}, コード: {os.path.basename(chord_file)}, メロディ: {os.path.basename(melody_file)}, ドラム: {os.path.basename(drum_file)}")
 
 # ランダム価格生成
 priceA = random.choice(price_options)
@@ -98,7 +121,8 @@ if st.button("送信"):
             participant["id"], participant["gender"], participant["age"],
             trial,
             song_choice, key_choice,
-            bass_file, chord_file, melody_file, drum_file,
+            os.path.basename(bass_file), os.path.basename(chord_file),
+            os.path.basename(melody_file), os.path.basename(drum_file),
             priceA, rankA, priceB, rankB, rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
