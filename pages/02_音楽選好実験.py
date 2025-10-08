@@ -13,10 +13,10 @@ os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 bpm_options = [1.0, 1.4]  # BPM100, BPM140
 price_options = [50, 100]
-keys = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
+keys = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 TRIALS_PER_PERSON = 10
 
-# ==== セッション ====
+# ==== セッションチェック ====
 if "participant_info" not in st.session_state:
     st.error("⚠️ 先に登録ページで情報を入力してください。")
     st.stop()
@@ -29,7 +29,7 @@ trial = st.session_state.trial
 
 st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
-# ==== 楽曲生成 ====
+# ==== 楽曲生成関数 ====
 def generate_mix():
     key_type = random.choice(["メジャー", "マイナー"])
     base_path = os.path.join(AUDIO_FOLDER, key_type)
@@ -45,14 +45,17 @@ def generate_mix():
     drum_folder = os.path.join(AUDIO_FOLDER, "ドラム")
     drum_file = random.choice([os.path.join(drum_folder, f) for f in os.listdir(drum_folder) if f.endswith(".wav")])
 
+    # ==== ロード（モノラル化）====
     y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
     y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
     y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
     y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
+    # ==== 長さ揃え ====
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     y_bass, y_chord, y_melody, y_drum = [y[:min_len] for y in [y_bass, y_chord, y_melody, y_drum]]
 
+    # ==== キー変換（ドラム以外）====
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
         try:
@@ -88,7 +91,7 @@ fileB = os.path.join(TEMP_FOLDER, f"mixB_{trial}.wav")
 sf.write(fileA, mixA, srA)
 sf.write(fileB, mixB, srB)
 
-# ==== UI ====
+# ==== UI表示 ====
 st.markdown(f"### 曲A（価格: {priceA}円）")
 st.audio(fileA, format="audio/wav")
 st.markdown(f"### 曲B（価格: {priceB}円）")
@@ -100,7 +103,7 @@ rankA = st.selectbox("曲Aの順位", rank_options, key=f"rankA_{trial}")
 rankB = st.selectbox("曲Bの順位", rank_options, key=f"rankB_{trial}")
 rankExt = st.selectbox("どちらも買わないの順位", rank_options, key=f"rankExt_{trial}")
 
-# ==== 保存 ====
+# ==== データ保存 ====
 if st.button("送信"):
     if len({rankA, rankB, rankExt}) < 3:
         st.error("順位が重複しています。全て異なる順位を選んでください。")
@@ -116,8 +119,9 @@ if st.button("送信"):
 
     def one_hot_key(semitone_shift):
         base = {k: 0 for k in keys}
-        key_index = (keys.index("C") + semitone_shift) % 12
-        base[keys[key_index]] = 1
+        index_C = keys.index("C")
+        shifted_index = (index_C + semitone_shift) % 12
+        base[keys[shifted_index]] = 1
         return base
 
     def one_hot_bpm(tempo):
@@ -138,7 +142,6 @@ if st.button("送信"):
         row.update(one_hot_key(keyShift))
         return row
 
-    # === ベクトル作成 ===
     vecA = build_row(typeA, bassA, chordA, melodyA, drumA, tempoA, priceA, keyShiftA)
     vecB = build_row(typeB, bassB, chordB, melodyB, drumB, tempoB, priceB, keyShiftB)
 
@@ -148,7 +151,6 @@ if st.button("送信"):
     external_pref_A = 1 if rankA < rankExt else 0
     external_pref_B = 1 if rankB < rankExt else 0
 
-    # === 行作成 ===
     baseA = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_A, external_pref_A]
     baseB = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_B, external_pref_B]
     rowA = baseA + list(vecA.values())
