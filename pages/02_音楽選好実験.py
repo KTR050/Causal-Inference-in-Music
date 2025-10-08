@@ -29,27 +29,11 @@ trial = st.session_state.trial
 
 st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
-# ==== ランダム曲選択 ====
-songs = [d for d in os.listdir(DATASET_FOLDER) 
-         if os.path.isdir(os.path.join(DATASET_FOLDER, d)) and d != "ドラム"]
+# ランダムにメジャー or マイナーを選ぶ
+song_choice = random.choice(["メジャー", "マイナー"])
+base_path = os.path.join(DATASET_FOLDER, song_choice)
 
-if not songs:
-    st.error("データセットに曲フォルダが存在しません")
-    st.stop()
-
-song_choice = random.choice(songs)
-
-# メジャー/マイナーサブフォルダの自動取得
-key_options = [d for d in os.listdir(os.path.join(DATASET_FOLDER, song_choice)) 
-               if os.path.isdir(os.path.join(DATASET_FOLDER, song_choice, d))]
-if not key_options:
-    st.error(f"{song_choice} にメジャー/マイナーサブフォルダが存在しません")
-    st.stop()
-key_choice = random.choice(key_options)
-
-base_path = os.path.join(DATASET_FOLDER, song_choice, key_choice)
-
-# ==== パートごとのランダム選択関数 ====
+# 各パートのランダム選択
 def pick_random_file(folder_name):
     folder_path = os.path.join(base_path, folder_name)
     if not os.path.exists(folder_path):
@@ -57,7 +41,7 @@ def pick_random_file(folder_name):
         st.stop()
     files = [f for f in os.listdir(folder_path) if f.endswith(".wav")]
     if not files:
-        st.error(f"{folder_name} フォルダに WAV ファイルがありません")
+        st.error(f"{folder_name} フォルダに WAV ファイルがありません: {folder_path}")
         st.stop()
     return os.path.join(folder_path, random.choice(files))
 
@@ -66,14 +50,10 @@ chord_file = pick_random_file("コード")
 melody_file = pick_random_file("メロディ")
 
 # ドラムは共通フォルダからランダム選択
-if not os.path.exists(DRUM_FOLDER):
-    st.error(f"ドラムフォルダが存在しません: {DRUM_FOLDER}")
-    st.stop()
-drum_files = [f for f in os.listdir(DRUM_FOLDER) if f.endswith(".wav")]
-if not drum_files:
-    st.error(f"ドラムフォルダに WAV ファイルがありません: {DRUM_FOLDER}")
-    st.stop()
-drum_file = os.path.join(DRUM_FOLDER, random.choice(drum_files))
+drum_folder = os.path.join(DATASET_FOLDER, "ドラム")
+drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
+drum_file = os.path.join(drum_folder, random.choice(drum_files))
+
 
 # ==== 音声読み込み ====
 def load_audio(path):
