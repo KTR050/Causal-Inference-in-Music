@@ -100,6 +100,7 @@ if not valid:
     st.warning("各順位（1, 2, 3）は一度ずつ使用してください。")
 
 # ==== 送信ボタン ====
+# 送信ボタン
 if st.button("送信"):
     if not valid:
         st.error("順位が重複しています。修正してください。")
@@ -114,11 +115,16 @@ if st.button("送信"):
 
         st.success("回答が保存されました！新しい曲を表示します。")
 
-        # 新しい試行を生成
-        st.session_state.trial = generate_new_trial()
+        # セッションにフラグを立てる
+        st.session_state["new_trial_needed"] = True
 
-        # page rerun して selectbox を初期化
-        st.experimental_rerun()
+# ===== トップレベルでフラグ判定 =====
+if st.session_state.get("new_trial_needed", False):
+    st.session_state.trial = generate_new_trial()  # 新しい曲を生成
+    st.session_state["new_trial_needed"] = False    # フラグをリセット
+    st.experimental_rerun()                        # ページを安全に再描画
+
+
 
 
 
