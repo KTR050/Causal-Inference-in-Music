@@ -28,77 +28,68 @@ trial = st.session_state.trial
 
 st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
-# ==== 曲タイプ選択（メジャー/マイナー） ====
-song_choice = random.choice(["メジャー", "マイナー"])
-base_path = os.path.join(DATASET_FOLDER, song_choice)
-
-# ==== パートごとのランダム選択関数 ====
-def pick_random_file(folder_name):
-    folder_path = os.path.join(base_path, folder_name)
-    if not os.path.exists(folder_path):
-        st.error(f"{folder_name} フォルダが存在しません: {folder_path}")
-        st.stop()
-    files = [f for f in os.listdir(folder_path) if f.endswith(".wav")]
-    if not files:
-        st.error(f"{folder_name} フォルダに WAV ファイルがありません: {folder_path}")
-        st.stop()
-    return os.path.join(folder_path, random.choice(files))
-
-bass_file = pick_random_file("ベース")
-chord_file = pick_random_file("コード")
-melody_file = pick_random_file("メロディ")
-
-# ==== ドラムファイル選択 ====
-drum_folder = os.path.join(DATASET_FOLDER, "ドラム")
-drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
-if not drum_files:
-    st.error(f"ドラムフォルダに WAV ファイルがありません: {drum_folder}")
-    st.stop()
-drum_file = os.path.join(drum_folder, random.choice(drum_files))
-
-# ==== 音声読み込み ====
+# ==== 音声読み込み関数 ====
 def load_audio(path):
     y, sr = librosa.load(path, sr=None, mono=True)
     return y, sr
 
-bass, sr = load_audio(bass_file)
-chord, _ = load_audio(chord_file)
-melody, _ = load_audio(melody_file)
-drum, _ = load_audio(drum_file)
+# ==== ランダム曲生成関数（ベース・コード・メロディ・ドラム合成＋ピッチ調整） ====
+def generate_mix():
+    # 曲タイプ選択
+    song_choice = random.choice(["メジャー", "マイナー"])
+    base_path = os.path.join(DATASET_FOLDER, song_choice)
 
-# ==== 長さ揃え & 合成 ====
-min_len = min(len(bass), len(chord), len(melody), len(drum))
-mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
+    def pick_random_file(folder_name):
+        folder_path = os.path.join(base_path, folder_name)
+        files = [f for f in os.listdir(folder_path) if f.endswith(".wav")]
+        return os.path.join(folder_path, random.choice(files))
 
-# float32に変換
-mix = mix.astype(np.float32)
+    bass, sr = load_audio(pick_random_file("ベース"))
+    chord, _ = load_audio(pick_random_file("コード"))
+    melody, _ = load_audio(pick_random_file("メロディ"))
+    
+    # ドラムは共通フォルダ
+    drum_folder = os.path.join(DATASET_FOLDER, "ドラム")
+    drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
+    drum, _ = load_audio(os.path.join(drum_folder, random.choice(drum_files)))
 
-# ==== 合成後にテンポ変更（ピッチ調整） ====
-tempo = random.choice(bpm_options)
-if tempo != 1.0:
-    mix = librosa.effects.time_stretch(mix, rate=tempo)
+    # 長さ揃え & 合成
+    min_len = min(len(bass), len(chord), len(melody), len(drum))
+    mix = bass[:min_len] + chord[:min_len] + melody[:min_len] + drum[:min_len]
+    mix = mix.astype(np.float32)
 
-# 正規化
-mix = mix / np.max(np.abs(mix))
+    # 合成後にテンポ変更（ピッチ調整）
+    tempo = random.choice(bpm_options)
+    if tempo != 1.0:
+        mix = librosa.effects.time_stretch(mix, rate=tempo)
+    
+    # 正規化
+    mix = mix / np.max(np.abs(mix))
+    return mix, sr, song_choice, tempo, bass, chord, melody, drum
 
-# 保存
-temp_file = os.path.join(TEMP_FOLDER, f"trial_{trial}.wav")
-sf.write(temp_file, mix, sr)
+# ==== 曲A生成 ====
+mixA, srA, typeA, tempoA, bassA, chordA, melodyA, drumA = generate_mix()
+fileA = os.path.join(TEMP_FOLDER, f"trial_{trial}_A.wav")
+sf.write(fileA, mixA, srA)
+st.markdown("### 曲 A")
+st.audio(fileA, format="audio/wav")
 
-
-# ==== Streamlit UI ====
-st.audio(temp_file, format="audio/wav")
-st.write(f"曲タイプ: {song_choice}, テンポ倍率: {tempo}")
-st.write(f"ベース: {os.path.basename(bass_file)}, コード: {os.path.basename(chord_file)}, メロディ: {os.path.basename(melody_file)}, ドラム: {os.path.basename(drum_file)}")
+# ==== 曲B生成 ====
+mixB, srB, typeB, tempoB, bassB, chordB, melodyB, drumB = generate_mix()
+fileB = os.path.join(TEMP_FOLDER, f"trial_{trial}_B.wav")
+sf.write(fileB, mixB, srB)
+st.markdown("### 曲 B")
+st.audio(fileB, format="audio/wav")
 
 # ==== ランダム価格生成 ====
 priceA = random.choice(price_options)
 priceB = random.choice(price_options)
+st.write(f"価格A: {priceA} 円, 価格B: {priceB} 円")
 
 # ==== 選好順位入力 ====
 rank_options = [1, 2, 3]
-rankA = st.selectbox("曲を買う", rank_options, key=f"rankA_{trial}")
-rankB = st.selectbox("別曲を買う", rank_options, key=f"rankB_{trial}")
+rankA = st.selectbox("曲Aを買う", rank_options, key=f"rankA_{trial}")
+rankB = st.selectbox("曲Bを買う", rank_options, key=f"rankB_{trial}")
 rankExt = st.selectbox("どちらも買わない", rank_options, key=f"rankExt_{trial}")
 
 ranks = [rankA, rankB, rankExt]
@@ -112,11 +103,14 @@ if st.button("送信"):
         row = [
             participant["id"], participant["gender"], participant["age"],
             trial,
-            song_choice,
-            os.path.basename(bass_file), os.path.basename(chord_file),
-            os.path.basename(melody_file), os.path.basename(drum_file),
-            tempo,
-            priceA, rankA, priceB, rankB, rankExt
+            # 曲A情報
+            typeA, os.path.basename(bassA), os.path.basename(chordA),
+            os.path.basename(melodyA), os.path.basename(drumA), tempoA, priceA, rankA,
+            # 曲B情報
+            typeB, os.path.basename(bassB), os.path.basename(chordB),
+            os.path.basename(melodyB), os.path.basename(drumB), tempoB, priceB, rankB,
+            # External Option
+            rankExt
         ]
         save_to_sheet("研究", "アンケート集計", row)
         st.success(f"試行 {trial}/{TRIALS_PER_PERSON} の回答を保存しました。")
