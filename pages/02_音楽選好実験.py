@@ -11,7 +11,7 @@ DATASET_FOLDER = "データセット"   # メジャー/マイナー/ドラム
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-bpm_options = [0.8, 1.2, 2]       # ピッチ/テンポ倍率
+bpm_options = [0.8, 1, 1.4]       # ピッチ/テンポ倍率
 price_options = [25, 50, 100]
 TRIALS_PER_PERSON = 10
 
