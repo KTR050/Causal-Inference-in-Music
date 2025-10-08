@@ -60,14 +60,11 @@ process_audio(os.path.join(AUDIO_FOLDER, fileA), tempoA, processed_fileA)
 process_audio(os.path.join(AUDIO_FOLDER, fileB), tempoB, processed_fileB)
 
 # ==== UI ====
-st.title("音楽選好実験（順位付け形式）")
+st.title("音楽選好実験")
 
 st.markdown("""
 以下の2曲を聴いてください。
 そのうえで、3つの選択肢 に順位を付けてください。
-- 1 = 最も好ましい  
-- 2 = 次に好ましい  
-- 3 = 最も好ましくない  
 """)
 
 # 曲A
@@ -84,7 +81,12 @@ st.audio(processed_fileB, format="audio/wav")
 st.markdown("External Option（どちらも買わない）")
 
 # プルダウン選択（順位付け）
-st.markdown("####順位を選択してください（1〜3の各数字は一度だけ使ってください）")
+st.markdown("
+順位を選択してください（1〜3の各数字は一度だけ使ってください）
+1 = 最も好ましい  
+2 = 次に好ましい  
+3 = 最も好ましくない  
+            ")
 rank_options = [1, 2, 3]
 rankA = st.selectbox("曲 A を買う", rank_options, key="rankA")
 rankB = st.selectbox("曲 B を買う", rank_options, key="rankB")
@@ -110,5 +112,6 @@ if st.button("送信"):
         ]
         save_to_sheet("研究", "アンケート集計", row)
         st.success("回答がスプレッドシートに保存されました。ありがとうございました！")
+
 
 
