@@ -11,7 +11,7 @@ AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-bpm_options = [1.0, 1.4]  # 100, 140BPM
+bpm_options = [1.0, 1.4]  # BPM100, BPM140
 price_options = [50, 100]
 keys = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
 TRIALS_PER_PERSON = 10
@@ -53,7 +53,6 @@ def generate_mix():
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     y_bass, y_chord, y_melody, y_drum = [y[:min_len] for y in [y_bass, y_chord, y_melody, y_drum]]
 
-    # === ドラム以外をキー変更 ===
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
         try:
@@ -77,9 +76,12 @@ def generate_mix():
 if f"mixA_{trial}" not in st.session_state:
     st.session_state[f"mixA_{trial}"] = generate_mix()
     st.session_state[f"mixB_{trial}"] = generate_mix()
+    st.session_state[f"priceA_{trial}"] = random.choice(price_options)
+    st.session_state[f"priceB_{trial}"] = random.choice(price_options)
 
 mixA, srA, typeA, tempoA, keyShiftA, bassA, chordA, melodyA, drumA = st.session_state[f"mixA_{trial}"]
 mixB, srB, typeB, tempoB, keyShiftB, bassB, chordB, melodyB, drumB = st.session_state[f"mixB_{trial}"]
+priceA, priceB = st.session_state[f"priceA_{trial}"], st.session_state[f"priceB_{trial}"]
 
 fileA = os.path.join(TEMP_FOLDER, f"mixA_{trial}.wav")
 fileB = os.path.join(TEMP_FOLDER, f"mixB_{trial}.wav")
@@ -87,7 +89,6 @@ sf.write(fileA, mixA, srA)
 sf.write(fileB, mixB, srB)
 
 # ==== UI ====
-priceA, priceB = random.choice(price_options), random.choice(price_options)
 st.markdown(f"### 曲A（価格: {priceA}円）")
 st.audio(fileA, format="audio/wav")
 st.markdown(f"### 曲B（価格: {priceB}円）")
@@ -105,7 +106,7 @@ if st.button("送信"):
         st.error("順位が重複しています。全て異なる順位を選んでください。")
         st.stop()
 
-    # ==== ワンホット関数群 ====
+    # === ワンホット関数 ===
     def one_hot_file(name, prefix, max_num):
         base = {f"{prefix}{i}": 0 for i in range(1, max_num + 1)}
         for i in range(1, max_num + 1):
@@ -114,27 +115,20 @@ if st.button("送信"):
         return base
 
     def one_hot_key(semitone_shift):
+        base = {k: 0 for k in keys}
         key_index = (keys.index("C") + semitone_shift) % 12
-        one_hot = {k: 0 for k in keys}
-        one_hot[keys[key_index]] = 1
-        return one_hot
+        base[keys[key_index]] = 1
+        return base
 
     def one_hot_bpm(tempo):
-        d = {"BPM100": 0, "BPM140": 0}
-        if tempo == 1.0:
-            d["BPM100"] = 1
-        else:
-            d["BPM140"] = 1
-        return d
+        return {"BPM100": 1 if tempo == 1.0 else 0, "BPM140": 1 if tempo == 1.4 else 0}
 
     def one_hot_price(price):
-        d = {"100円": 0, "50円": 0}
-        d[f"{price}円"] = 1
-        return d
+        return {"100円": 1 if price == 100 else 0, "50円": 1 if price == 50 else 0}
 
     def build_row(mix_type, bass, chord, melody, drum, tempo, price, keyShift):
-        row = {}
         prefix = "M" if mix_type == "メジャー" else "m"
+        row = {}
         row.update(one_hot_file(bass, f"{prefix}ベース", 3))
         row.update(one_hot_file(chord, f"{prefix}コード", 3))
         row.update(one_hot_file(melody, f"{prefix}メロディ", 4))
@@ -144,22 +138,21 @@ if st.button("送信"):
         row.update(one_hot_key(keyShift))
         return row
 
-    # === 曲A・Bベクトル生成 ===
+    # === ベクトル作成 ===
     vecA = build_row(typeA, bassA, chordA, melodyA, drumA, tempoA, priceA, keyShiftA)
     vecB = build_row(typeB, bassB, chordB, melodyB, drumB, tempoB, priceB, keyShiftB)
 
-    # === 内部選好・外部選好計算 ===
+    # === 内外部選好 ===
     internal_pref_A = 1 if rankA < rankB else 0
     internal_pref_B = 1 if rankB < rankA else 0
-
     external_pref_A = 1 if rankA < rankExt else 0
     external_pref_B = 1 if rankB < rankExt else 0
 
-    base_info_A = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_A, external_pref_A]
-    base_info_B = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_B, external_pref_B]
-
-    rowA = base_info_A + list(vecA.values())
-    rowB = base_info_B + list(vecB.values())
+    # === 行作成 ===
+    baseA = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_A, external_pref_A]
+    baseB = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_B, external_pref_B]
+    rowA = baseA + list(vecA.values())
+    rowB = baseB + list(vecB.values())
 
     save_to_sheet("研究", "アンケート集計", rowA)
     save_to_sheet("研究", "アンケート集計", rowB)
