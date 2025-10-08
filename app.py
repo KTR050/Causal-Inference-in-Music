@@ -4,6 +4,7 @@ import random
 import uuid
 import librosa
 import soundfile as sf
+import pyrubberband as pyrb
 import streamlit as st
 from save_to_sheet import save_to_sheet
 
@@ -22,8 +23,8 @@ TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
 # ==== パラメータ ====
-# 音質劣化を防ぐためテンポ変更幅を狭く
-bpm_options = [0.9, 1.0, 1.1]
+# 元の設定を維持（倍率を広く取る）
+bpm_options = [0.8, 1.0, 1.4, 2.2]
 price_options = [50, 100, 200]
 
 # ==== ユーティリティ関数 ====
@@ -31,13 +32,16 @@ def extract_musicname_number(filename):
     """ファイル名から拡張子を除去"""
     return os.path.splitext(filename)[0]
 
-# ==== 音声処理 ====
+# ==== 音声処理（Rubber Bandを使用） ====
 def process_audio(input_path, tempo=1.0, output_path="output.wav"):
-    """librosaでテンポ変更（控えめな範囲で）"""
+    """
+    Rubber Band Library を用いた高品質なテンポ変更。
+    ピッチを保持したままテンポのみを変更。
+    """
     try:
         y, sr = librosa.load(input_path, sr=None, mono=True)
         if tempo != 1.0:
-            y = librosa.effects.time_stretch(y, rate=tempo)
+            y = pyrb.time_stretch(y, sr, tempo)
         sf.write(output_path, y, sr)
     except Exception as e:
         st.error(f"音声処理中にエラーが発生しました: {e}")
