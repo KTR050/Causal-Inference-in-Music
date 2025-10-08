@@ -3,7 +3,6 @@ import random
 import numpy as np
 import librosa
 import soundfile as sf
-import pyrubberband as pyrb
 import streamlit as st
 from scipy.signal import butter, lfilter
 from save_to_sheet import save_to_sheet
@@ -69,25 +68,27 @@ def generate_mix():
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
 
-    # ランダムEQ適用
+    # ==== EQ適用 ====
     eq_gain = {b: random.choice(eq_values) for b in eq_bands}
     mix = apply_eq(mix, sr, eq_gain)
 
-    # テンポ変更（音程維持）
+    # ==== テンポ変更（ピッチ維持）====
     tempo = random.choice(bpm_options)
     if tempo != 1.0:
-        mix = pyrb.time_stretch(mix, sr, tempo)
+        mix = librosa.effects.time_stretch(mix, tempo)
 
-    # ランダムキー変換（-5〜+5半音）
+    # ==== ランダムキー変換（半音単位）====
     semitone_shift = random.randint(-5, 5)
     if semitone_shift != 0:
-        mix = pyrb.pitch_shift(mix, sr, semitone_shift)
+        mix = librosa.effects.pitch_shift(mix, sr, n_steps=semitone_shift)
 
     mix = mix / np.max(np.abs(mix))
 
-    return mix, sr, key_type, tempo, eq_gain, semitone_shift, os.path.basename(bass_file), os.path.basename(chord_file), os.path.basename(melody_file), os.path.basename(drum_file)
+    return mix, sr, key_type, tempo, eq_gain, semitone_shift, \
+           os.path.basename(bass_file), os.path.basename(chord_file), \
+           os.path.basename(melody_file), os.path.basename(drum_file)
 
-# ==== 曲A/B生成（1試行で固定） ====
+# ==== 曲A/B生成 ====
 if f"mixA_{trial}" not in st.session_state:
     st.session_state[f"mixA_{trial}"] = generate_mix()
     st.session_state[f"mixB_{trial}"] = generate_mix()
@@ -95,7 +96,7 @@ if f"mixA_{trial}" not in st.session_state:
 mixA, srA, typeA, tempoA, eqA, keyShiftA, bassA, chordA, melodyA, drumA = st.session_state[f"mixA_{trial}"]
 mixB, srB, typeB, tempoB, eqB, keyShiftB, bassB, chordB, melodyB, drumB = st.session_state[f"mixB_{trial}"]
 
-# ==== 一時保存 ====
+# ==== 一時ファイルに保存 ====
 fileA = os.path.join(TEMP_FOLDER, f"mixA_{trial}.wav")
 fileB = os.path.join(TEMP_FOLDER, f"mixB_{trial}.wav")
 sf.write(fileA, mixA, srA)
@@ -103,10 +104,10 @@ sf.write(fileB, mixB, srB)
 
 # ==== UI ====
 priceA, priceB = random.choice(price_options), random.choice(price_options)
-st.markdown(f"### 曲A（{typeA}, {tempoA}x, key shift {keyShiftA:+}） 価格: {priceA}円")
+st.markdown(f"### 曲A（{typeA}, tempo={tempoA}x, key shift={keyShiftA:+}） 価格: {priceA}円")
 st.audio(fileA, format="audio/wav")
 
-st.markdown(f"### 曲B（{typeB}, {tempoB}x, key shift {keyShiftB:+}） 価格: {priceB}円")
+st.markdown(f"### 曲B（{typeB}, tempo={tempoB}x, key shift={keyShiftB:+}） 価格: {priceB}円")
 st.audio(fileB, format="audio/wav")
 
 st.markdown("External Option（どちらも買わない）")
