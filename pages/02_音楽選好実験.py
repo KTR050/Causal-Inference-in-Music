@@ -35,21 +35,28 @@ st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
 
 # ==== EQ関数 ====
 def apply_eq(y, sr, gains):
-    """ハイ・ミッド・ロウをランダムにブースト/カット"""
     def bandpass(y, low, high):
+        low = max(20, low)
+        high = min(sr / 2 * 0.95, high)
+        if low >= high:
+            return y
         b, a = butter(4, [low/(sr/2), high/(sr/2)], btype='band')
         return lfilter(b, a, y)
 
     low = bandpass(y, 20, 250) * gains["low"]
     mid = bandpass(y, 250, 4000) * gains["mid"]
-    high = bandpass(y, 4000, 12000) * gains["high"]
+    high = bandpass(y, 4000, sr/2 * 0.95) * gains["high"]
 
     mix = low + mid + high
-    mix = np.nan_to_num(mix, nan=0.0, posinf=0.0, neginf=0.0)
+    if np.max(np.abs(mix)) < 1e-8:  # ほぼ無音なら元信号に戻す
+        mix = y
+    mix = np.nan_to_num(mix)
 
-    if np.max(np.abs(mix)) > 0:
-        mix = mix / np.max(np.abs(mix))
+    rms = np.sqrt(np.mean(mix**2))
+    if rms > 0:
+        mix = mix / (rms * 3)
     return mix
+
 
 # ==== トラック生成 ====
 def generate_mix():
