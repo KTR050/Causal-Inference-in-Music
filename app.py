@@ -4,7 +4,6 @@ import random
 import uuid
 import librosa
 import soundfile as sf
-import pyrubberband as pyrb
 import streamlit as st
 from save_to_sheet import save_to_sheet
 
@@ -142,4 +141,5 @@ if st.button("送信"):
                 st.info("ローカルにバックアップを保存しました。")
             except Exception as e2:
                 st.error(f"バックアップ保存にも失敗しました: {e2}")
+
 
