@@ -14,14 +14,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ===== Streamlit設定 =====
 st.set_page_config(page_title="音楽選好実験", page_icon="🎵", layout="centered")
 
-# ==== サイドバー削除 ====
+# ==== サイドバー・ツールバー非表示 ====
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {display: none;}
     [data-testid="stToolbar"] {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
 
 # ==== Google認証 ====
 b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
@@ -31,7 +30,6 @@ if b64_creds:
 else:
     st.error("Google認証情報（GOOGLE_CREDENTIALS_B64）が設定されていません。")
     st.stop()
-
 
 # ==== ID取得関数 ====
 def get_next_id(spreadsheet_title, worksheet_name):
@@ -45,13 +43,12 @@ def get_next_id(spreadsheet_title, worksheet_name):
     rows = len(sheet.get_all_values())
     return rows  # n行目 → id = n-1
 
-
 # ==== ページ制御 ====
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
 
-# ==== ページ1: ホーム ====
+# ===== ページ1: ホーム =====
 if st.session_state.page == "home":
     st.title("🎵 音楽選好実験へようこそ")
 
@@ -67,24 +64,29 @@ if st.session_state.page == "home":
         st.rerun()
 
 
-# ==== ページ2: 被験者登録 ====
+# ===== ページ2: 被験者登録 =====
 elif st.session_state.page == "register":
     st.title("🧑‍💼 被験者登録")
+
+    if "register_disabled" not in st.session_state:
+        st.session_state.register_disabled = False
 
     with st.form("register_form"):
         gender = st.radio("性別を選んでください", ["男性", "女性"])
         age_input = st.text_input("年齢を入力してください（数字のみ）")
+
         try:
             age = int(age_input)
         except ValueError:
             age = None
-        submitted = st.form_submit_button("登録する", disabled=st.session_state.get("registering", False))
+
+        submitted = st.form_submit_button("登録する", disabled=st.session_state.register_disabled)
 
     if submitted:
-        st.session_state.registering = True
+        st.session_state.register_disabled = True
         if age is None:
             st.warning("年齢は数字で入力してください。")
-            st.session_state.registering = False
+            st.session_state.register_disabled = False
         else:
             try:
                 gender_value = 1 if gender == "男性" else 0
@@ -101,30 +103,29 @@ elif st.session_state.page == "register":
                 st.session_state.trial = 1
 
                 st.success(f"登録完了！ あなたのIDは {participant_id} です。")
+                st.toast("🎶 音楽選好実験へ移動します...", icon="➡️")
 
-                if st.button("🎵 音楽選好実験へ進む"):
-                    st.session_state.page = "experiment"
-                    st.rerun()
+                st.session_state.page = "experiment"
+                st.rerun()
 
             except Exception as e:
                 st.error(f"登録中にエラーが発生しました: {e}")
-                st.session_state.registering = False
+                st.session_state.register_disabled = False
 
 
-# ==== ページ3: 音楽選好実験 ====
+# ===== ページ3: 音楽選好実験 =====
 elif st.session_state.page == "experiment":
     st.title("🎶 音楽選好実験")
 
-    # ===== データセット読み込み設定 =====
+    # ===== データセット設定 =====
     base_path = "データセット"
     key_types = ["メジャー", "マイナー"]
     parts = ["ベース", "コード", "メロディ", "ドラム"]
 
-    # ==== 楽曲生成 ====
+    # ==== ミックス生成 ====
     def generate_mix():
         key_type = random.choice(key_types)
-        sources = []
-        names = []
+        sources, names = [], []
 
         for part in parts:
             folder = os.path.join(base_path, key_type, part)
@@ -134,16 +135,14 @@ elif st.session_state.page == "experiment":
             sources.append(y)
             names.append(choice)
 
-        # 各トラックを短い長さに揃える
-        min_len = min([len(x) for x in sources])
+        min_len = min(len(x) for x in sources)
         sources = [x[:min_len] for x in sources]
-
         mix = np.sum(sources, axis=0)
         mix /= np.max(np.abs(mix)) + 1e-6
 
         return mix, sr, key_type, names
 
-    # ==== 一度だけ曲を生成 ====
+    # ==== 曲生成 ====
     if f"mixA_{st.session_state.trial}" not in st.session_state:
         st.session_state[f"mixA_{st.session_state.trial}"] = generate_mix()
         st.session_state[f"mixB_{st.session_state.trial}"] = generate_mix()
@@ -151,13 +150,13 @@ elif st.session_state.page == "experiment":
     mixA, srA, keyA, namesA = st.session_state[f"mixA_{st.session_state.trial}"]
     mixB, srB, keyB, namesB = st.session_state[f"mixB_{st.session_state.trial}"]
 
-    # ==== 音声一時保存 ====
+    # ==== 一時保存 ====
     tmpA = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     tmpB = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     sf.write(tmpA.name, mixA, srA)
     sf.write(tmpB.name, mixB, srB)
 
-    # ==== オーディオ表示 ====
+    # ==== 表示 ====
     st.subheader(f"試行 {st.session_state.trial}/10")
     st.write("以下の2曲を聴いて、より好ましい方を選んでください。")
 
@@ -169,17 +168,10 @@ elif st.session_state.page == "experiment":
         st.audio(tmpB.name, format="audio/wav")
         st.write("🎵 曲B")
 
-    # ==== 選好入力 ====
-    choice = st.radio(
-        "どちらを好みますか？",
-        ["曲A", "曲B", "どちらも買わない"],
-        horizontal=True
-    )
-
+    choice = st.radio("どちらを好みますか？", ["曲A", "曲B", "どちらも買わない"], horizontal=True)
     price_choice = st.radio("購入価格を選んでください：", ["100円", "50円"], horizontal=True)
 
     if st.button("次へ"):
-        # ====== データ保存 ======
         pid = st.session_state.participant_info["id"]
         gender = st.session_state.participant_info["gender"]
         age = st.session_state.participant_info["age"]
@@ -188,7 +180,7 @@ elif st.session_state.page == "experiment":
         internal_pref = 1 if choice == "曲A" else (0 if choice == "曲B" else "")
         external_pref = 1 if choice != "どちらも買わない" else 0
 
-    # ==== カラム定義（C削除済み） ====
+        # ==== Cを除くカラム ====
         columns = [
             "Mベース1","Mベース2","Mベース3",
             "mベース1","mベース2","mベース3",
@@ -201,19 +193,16 @@ elif st.session_state.page == "experiment":
             "A","A#","B","C#","D","D#","E","F","F#","G","G#"
         ]
 
-    # ==== 0/1リストを作成 ====
-        rowA = [pid, gender, age, round_num, internal_pref, external_pref] + \
-           [random.randint(0, 1) for _ in range(len(columns))]
-
-        rowB = [pid, gender, age, round_num, internal_pref, external_pref] + \
-           [random.randint(0, 1) for _ in range(len(columns))]
+        # ==== ランダム0/1リスト ====
+        rowA = [pid, gender, age, round_num, internal_pref, external_pref] + [random.randint(0, 1) for _ in range(len(columns))]
+        rowB = [pid, gender, age, round_num, internal_pref, external_pref] + [random.randint(0, 1) for _ in range(len(columns))]
 
         save_to_sheet("研究", "選好データ", rowA)
         save_to_sheet("研究", "選好データ", rowB)
 
         st.session_state.trial += 1
+
         if st.session_state.trial > 10:
-            st.success("🎉 実験完了！ありがとうございました。")
+            st.success("🎉 実験完了！ご協力ありがとうございました！")
         else:
             st.rerun()
-
