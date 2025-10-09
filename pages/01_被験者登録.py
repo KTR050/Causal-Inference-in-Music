@@ -98,7 +98,7 @@ if st.session_state.register_disabled and not st.session_state.registered:
         st.session_state.trial = 1
         st.session_state.registered = True
 
-        st.success(f"登録完了！ あなたのIDは {participant_id} です。")
+        st.success(f"登録完了！")
         st.page_link("pages/02_音楽選好実験.py", label="👉 実験ページへ進む", icon="🎵")
 
     except Exception as e:
