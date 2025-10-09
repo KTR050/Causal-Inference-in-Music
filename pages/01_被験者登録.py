@@ -30,50 +30,69 @@ st.title("🧑‍💼 被験者登録")
 
 st.markdown("""
 以下の情報を入力してください。
-登録後に自動でIDが割り振られます。
 """)
 
-# ==== 二重送信防止 ====
+# ==== 状態管理 ====
+if "register_disabled" not in st.session_state:
+    st.session_state.register_disabled = False
 if "registered" not in st.session_state:
     st.session_state.registered = False
 
 with st.form("register_form"):
     gender = st.radio("性別を選んでください", ["男性", "女性"])
     age_input = st.text_input("年齢を入力してください（数字のみ）")
+
     try:
         age = int(age_input)
     except ValueError:
         age = None
 
-    if age is None:
+    if age is None and age_input != "":
         st.warning("数字を入力してください")
 
+    # ボタン押下
     submitted = st.form_submit_button(
         "登録する",
-        disabled=st.session_state.registered  # ← 登録済みならボタン無効化
+        disabled=st.session_state.register_disabled or st.session_state.registered
     )
 
+# ==== 登録処理 ====
 if submitted and not st.session_state.registered:
-    gender_value = 1 if gender == "男性" else 0
-    participant_id = get_next_id("研究", "被験者リスト")
+    # 押した瞬間に無効化
+    st.session_state.register_disabled = True
+    st.rerun()
 
-    # ==== 保存 ====
-    row = [participant_id, gender_value, age]
-    save_to_sheet("研究", "被験者リスト", row)
+# ==== 押下後の処理 ====
+if st.session_state.register_disabled and not st.session_state.registered:
+    try:
+        gender_value = 1 if gender == "男性" else 0
 
-    # ==== セッション保存 ====
-    st.session_state.participant_info = {
-        "id": participant_id,
-        "gender": gender_value,
-        "age": age
-    }
-    st.session_state.trial = 1
-    st.session_state.registered = True  # ← 登録済みフラグをセット
+        if age is None:
+            raise ValueError("年齢が未入力です。")
 
-    st.success(f"登録完了！")
-    st.page_link("pages/02_音楽選好実験.py", label="👉 実験ページへ進む", icon="🎵")
+        participant_id = get_next_id("研究", "被験者リスト")
 
-# すでに登録済みならメッセージ表示
+        # Google Sheetに保存
+        row = [participant_id, gender_value, age]
+        save_to_sheet("研究", "被験者リスト", row)
+
+        # 成功したら登録完了扱いに
+        st.session_state.participant_info = {
+            "id": participant_id,
+            "gender": gender_value,
+            "age": age
+        }
+        st.session_state.trial = 1
+        st.session_state.registered = True
+
+        st.success(f"登録完了！ あなたのIDは {participant_id} です。")
+        st.page_link("pages/02_音楽選好実験.py", label="👉 実験ページへ進む", icon="🎵")
+
+    except Exception as e:
+        # エラー発生時 → 再度ボタン押下可能に戻す
+        st.error(f"登録に失敗しました: {e}")
+        st.session_state.register_disabled = False
+
 elif st.session_state.registered:
     st.info("✅ 登録済みです。下のリンクから実験ページへ進んでください。")
     st.page_link("pages/02_音楽選好実験.py", label="🎵 実験ページへ進む")
