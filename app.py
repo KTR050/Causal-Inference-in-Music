@@ -1,14 +1,20 @@
-import streamlit as st
 import os
 import base64
+import streamlit as st
+import numpy as np
+import soundfile as sf
+import librosa
+import tempfile
+import random
+from save_to_sheet import save_to_sheet
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from save_to_sheet import save_to_sheet
 
-# ==== ページ設定 ====
+
+# ===== Streamlit設定 =====
 st.set_page_config(page_title="音楽選好実験", page_icon="🎵", layout="centered")
 
-# ==== カスタムCSS：サイドバー完全非表示 ====
+# ==== サイドバー削除 ====
 st.markdown("""
 <style>
     [data-testid="stSidebar"] {display: none;}
@@ -16,14 +22,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # ==== Google認証 ====
 b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
 if b64_creds:
     with open("credentials.json", "wb") as f:
         f.write(base64.b64decode(b64_creds))
 else:
-    st.error("GOOGLE_CREDENTIALS_B64 が設定されていません。")
+    st.error("Google認証情報（GOOGLE_CREDENTIALS_B64）が設定されていません。")
     st.stop()
+
 
 # ==== ID取得関数 ====
 def get_next_id(spreadsheet_title, worksheet_name):
@@ -38,16 +46,17 @@ def get_next_id(spreadsheet_title, worksheet_name):
     return rows  # n行目 → id = n-1
 
 
-# ==== ページ遷移制御 ====
+# ==== ページ制御 ====
 if "page" not in st.session_state:
-    st.session_state.page = "home"  # 初期ページをapp（ホーム）に設定
+    st.session_state.page = "home"
 
-# ==== ページ：トップ ====
+
+# ==== ページ1: ホーム ====
 if st.session_state.page == "home":
     st.title("🎵 音楽選好実験へようこそ")
 
     st.markdown("""
-    このアプリでは、音楽の聴取実験を行います。  
+    このアプリでは音楽の聴取実験を行います。  
 
     1️⃣ まず「被験者登録」で性別と年齢を入力してください。  
     2️⃣ その後、「音楽選好実験」に進みます。  
@@ -58,11 +67,9 @@ if st.session_state.page == "home":
         st.rerun()
 
 
-# ==== ページ：被験者登録 ====
+# ==== ページ2: 被験者登録 ====
 elif st.session_state.page == "register":
     st.title("🧑‍💼 被験者登録")
-
-    st.markdown("以下の情報を入力してください。登録後に自動でIDが割り振られます。")
 
     with st.form("register_form"):
         gender = st.radio("性別を選んでください", ["男性", "女性"])
@@ -71,11 +78,10 @@ elif st.session_state.page == "register":
             age = int(age_input)
         except ValueError:
             age = None
-
         submitted = st.form_submit_button("登録する", disabled=st.session_state.get("registering", False))
 
     if submitted:
-        st.session_state.registering = True  # ボタン再押下防止
+        st.session_state.registering = True
         if age is None:
             st.warning("年齢は数字で入力してください。")
             st.session_state.registering = False
@@ -95,19 +101,119 @@ elif st.session_state.page == "register":
                 st.session_state.trial = 1
 
                 st.success(f"登録完了！ あなたのIDは {participant_id} です。")
+
                 if st.button("🎵 音楽選好実験へ進む"):
                     st.session_state.page = "experiment"
                     st.rerun()
+
             except Exception as e:
                 st.error(f"登録中にエラーが発生しました: {e}")
                 st.session_state.registering = False
 
-# ==== ページ：音楽選好実験 ====
+
+# ==== ページ3: 音楽選好実験 ====
 elif st.session_state.page == "experiment":
     st.title("🎶 音楽選好実験")
 
-    st.write("（ここに音楽提示や順位付けのロジックを入れます）")
+    # ===== データセット読み込み設定 =====
+    base_path = "データセット"
+    key_types = ["メジャー", "マイナー"]
+    parts = ["ベース", "コード", "メロディ", "ドラム"]
 
-    if st.button("🏠 ホームへ戻る"):
-        st.session_state.page = "home"
-        st.rerun()
+    # ==== 楽曲生成 ====
+    def generate_mix():
+        key_type = random.choice(key_types)
+        sources = []
+        names = []
+
+        for part in parts:
+            folder = os.path.join(base_path, key_type, part)
+            files = os.listdir(folder)
+            choice = random.choice(files)
+            y, sr = librosa.load(os.path.join(folder, choice), sr=None)
+            sources.append(y)
+            names.append(choice)
+
+        # 各トラックを短い長さに揃える
+        min_len = min([len(x) for x in sources])
+        sources = [x[:min_len] for x in sources]
+
+        mix = np.sum(sources, axis=0)
+        mix /= np.max(np.abs(mix)) + 1e-6
+
+        return mix, sr, key_type, names
+
+    # ==== 一度だけ曲を生成 ====
+    if f"mixA_{st.session_state.trial}" not in st.session_state:
+        st.session_state[f"mixA_{st.session_state.trial}"] = generate_mix()
+        st.session_state[f"mixB_{st.session_state.trial}"] = generate_mix()
+
+    mixA, srA, keyA, namesA = st.session_state[f"mixA_{st.session_state.trial}"]
+    mixB, srB, keyB, namesB = st.session_state[f"mixB_{st.session_state.trial}"]
+
+    # ==== 音声一時保存 ====
+    tmpA = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tmpB = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    sf.write(tmpA.name, mixA, srA)
+    sf.write(tmpB.name, mixB, srB)
+
+    # ==== オーディオ表示 ====
+    st.subheader(f"試行 {st.session_state.trial}/10")
+    st.write("以下の2曲を聴いて、より好ましい方を選んでください。")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.audio(tmpA.name, format="audio/wav")
+        st.write("🎵 曲A")
+    with col2:
+        st.audio(tmpB.name, format="audio/wav")
+        st.write("🎵 曲B")
+
+    # ==== 選好入力 ====
+    choice = st.radio(
+        "どちらを好みますか？",
+        ["曲A", "曲B", "どちらも買わない"],
+        horizontal=True
+    )
+
+    price_choice = st.radio("購入価格を選んでください：", ["100円", "50円"], horizontal=True)
+
+    if st.button("次へ"):
+        # ====== データ保存 ======
+        pid = st.session_state.participant_info["id"]
+        gender = st.session_state.participant_info["gender"]
+        age = st.session_state.participant_info["age"]
+        round_num = st.session_state.trial
+
+        internal_pref = 1 if choice == "曲A" else (0 if choice == "曲B" else "")
+        external_pref = 1 if choice != "どちらも買わない" else 0
+
+    # ==== カラム定義（C削除済み） ====
+        columns = [
+            "Mベース1","Mベース2","Mベース3",
+            "mベース1","mベース2","mベース3",
+            "Mコード1","Mコード2","Mコード3",
+            "mコード1","mコード2","mコード3",
+            "Mメロディ1","Mメロディ2","Mメロディ3","Mメロディ4",
+            "mメロディ1","mメロディ2","mメロディ3","mメロディ4",
+            "ドラム1","ドラム2","ドラム3",
+            "BPM100","BPM140","100円","50円",
+            "A","A#","B","C#","D","D#","E","F","F#","G","G#"
+        ]
+
+    # ==== 0/1リストを作成 ====
+        rowA = [pid, gender, age, round_num, internal_pref, external_pref] + \
+           [random.randint(0, 1) for _ in range(len(columns))]
+
+        rowB = [pid, gender, age, round_num, internal_pref, external_pref] + \
+           [random.randint(0, 1) for _ in range(len(columns))]
+
+        save_to_sheet("研究", "選好データ", rowA)
+        save_to_sheet("研究", "選好データ", rowB)
+
+        st.session_state.trial += 1
+        if st.session_state.trial > 10:
+            st.success("🎉 実験完了！ありがとうございました。")
+        else:
+            st.rerun()
+
