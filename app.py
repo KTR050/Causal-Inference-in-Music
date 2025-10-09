@@ -1,213 +1,174 @@
 import os
-import base64
-import streamlit as st
-import numpy as np
-import soundfile as sf
-import librosa
-import tempfile
 import random
+import numpy as np
+import librosa
+import soundfile as sf
+import streamlit as st
 from save_to_sheet import save_to_sheet
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# ===== Streamlit設定 =====
-st.set_page_config(page_title="音楽選好実験", page_icon="🎵", layout="centered")
+# ==== フォルダ設定 ====
+AUDIO_FOLDER = "データセット"
+TEMP_FOLDER = "temp_audio"
+os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-# ==== サイドバー非表示 ====
-st.markdown("""
-<style>
-[data-testid="stSidebar"] {display: none;}
-[data-testid="stToolbar"] {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
+bpm_options = [0.8, 1.0, 1.4]   # ピッチ/テンポ倍率
+price_options = [25, 50, 100]
+TRIALS_PER_PERSON = 10
 
-# ==== Google認証 ====
-b64_creds = os.getenv("GOOGLE_CREDENTIALS_B64")
-if b64_creds:
-    with open("credentials.json", "wb") as f:
-        f.write(base64.b64decode(b64_creds))
-else:
-    st.error("Google認証情報（GOOGLE_CREDENTIALS_B64）が設定されていません。")
+# ==== セッション管理 ====
+if "participant_info" not in st.session_state:
+    st.error("⚠️ 先に登録ページで情報を入力してください。")
     st.stop()
 
-# ==== ID取得関数 ====
-def get_next_id(spreadsheet_title, worksheet_name):
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
+if "trial" not in st.session_state:
+    st.session_state.trial = 1
+
+participant = st.session_state.participant_info
+trial = st.session_state.trial
+
+st.title(f"音楽選好実験（試行 {trial}/{TRIALS_PER_PERSON}）")
+
+# ==== スプレッドシートヘッダー取得 ====
+def get_sheet_header(spreadsheet_title, worksheet_name):
+    scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
     client = gspread.authorize(creds)
     sheet = client.open(spreadsheet_title).worksheet(worksheet_name)
-    rows = len(sheet.get_all_values())
-    return rows  # n行目 → id = n-1
+    return sheet.row_values(1)
 
-# ==== ページ制御 ====
-if "page" not in st.session_state:
-    st.session_state.page = "home"
+header = get_sheet_header("研究", "アンケート集計")
 
-# ==== ページ1: ホーム ====
-if st.session_state.page == "home":
-    st.title("🎵 音楽選好実験へようこそ")
+# ==== 1行目に従って0/1リストを作成 ====
+def make_binary_row(base_info, elements_dict, header):
+    row = base_info.copy()
+    for col in header[len(base_info):]:
+        row.append(1 if elements_dict.get(col, False) else 0)
+    return row
 
-    st.markdown("""
-    このアプリでは音楽の聴取実験を行います。  
+# ==== 曲生成 ====
+def generate_mix():
+    key_type = random.choice(["メジャー", "マイナー"])
+    base_path = os.path.join(AUDIO_FOLDER, key_type)
 
-    1️⃣ 「被験者登録」で性別と年齢を入力してください。  
-    2️⃣ 登録後に「音楽選好実験」が始まります。
-    """)
+    def pick_file(folder):
+        path = os.path.join(base_path, folder)
+        files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
+        if not files:
+            raise FileNotFoundError(f"{path} に音声ファイルがありません")
+        return random.choice(files)
 
-    if st.button("🧑‍💼 被験者登録へ進む"):
-        st.session_state.page = "register"
-        st.rerun()
+    bass_file = pick_file("ベース")
+    chord_file = pick_file("コード")
+    melody_file = pick_file("メロディ")
+    drum_file = random.choice([os.path.join(AUDIO_FOLDER,"ドラム",f) for f in os.listdir(os.path.join(AUDIO_FOLDER,"ドラム")) if f.endswith(".wav")])
 
-# ==== ページ2: 被験者登録 ====
-elif st.session_state.page == "register":
-    st.title("🧑‍💼 被験者登録")
+    y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
+    y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
+    y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
+    y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-    if "registering" not in st.session_state:
-        st.session_state.registering = False
+    # 長さ合わせ
+    min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
+    mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
+    mix = mix.astype(np.float32)
 
-    with st.form("register_form"):
-        gender = st.radio("性別を選んでください", ["男性", "女性"])
-        age_input = st.text_input("年齢を入力してください（数字のみ）")
-        submitted = st.form_submit_button("登録する", disabled=st.session_state.registering)
+    # ランダムキー変換（ドラム以外）
+    semitone_shift = random.randint(-6,5)
+    try:
+        mix_non_drum = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len]
+        mix_non_drum = librosa.effects.pitch_shift(mix_non_drum, sr, n_steps=semitone_shift)
+        mix = mix_non_drum + y_drum[:min_len]
+    except:
+        pass
 
-    if submitted:
-        st.session_state.registering = True
-        try:
-            age = int(age_input)
-            gender_value = 1 if gender == "男性" else 0
-            participant_id = get_next_id("研究", "被験者リスト")
+    mix = mix / np.max(np.abs(mix)+1e-6)
+    tempo = random.choice(bpm_options)
+    price = random.choice(price_options)
 
-            row = [participant_id, gender_value, age]
-            save_to_sheet("研究", "被験者リスト", row)
+    return {
+        "mix": mix, "sr": sr, "key_type": key_type,
+        "semitone_shift": semitone_shift, "tempo": tempo, "price": price,
+        "bass": os.path.basename(bass_file),
+        "chord": os.path.basename(chord_file),
+        "melody": os.path.basename(melody_file),
+        "drum": os.path.basename(drum_file)
+    }
 
-            st.session_state.participant_info = {
-                "id": participant_id,
-                "gender": gender_value,
-                "age": age
-            }
-            st.session_state.trial = 1
+# ==== 曲A/B生成 ====
+if f"mixA_{trial}" not in st.session_state:
+    st.session_state[f"mixA_{trial}"] = generate_mix()
+    st.session_state[f"mixB_{trial}"] = generate_mix()
 
-            st.success(f"登録完了！ あなたのIDは {participant_id} です。")
-            st.session_state.registering = False
-            st.session_state.page = "experiment"
-            st.rerun()
+mixA_info = st.session_state[f"mixA_{trial}"]
+mixB_info = st.session_state[f"mixB_{trial}"]
 
-        except ValueError:
-            st.warning("年齢は数字で入力してください。")
-            st.session_state.registering = False
-        except Exception as e:
-            st.error(f"登録中にエラーが発生しました: {e}")
-            st.session_state.registering = False
+fileA = os.path.join(TEMP_FOLDER,f"mixA_{trial}.wav")
+fileB = os.path.join(TEMP_FOLDER,f"mixB_{trial}.wav")
+sf.write(fileA, mixA_info["mix"], mixA_info["sr"])
+sf.write(fileB, mixB_info["mix"], mixB_info["sr"])
 
-# ==== ページ3: 音楽選好実験 ====
-elif st.session_state.page == "experiment":
-    st.title("🎶 音楽選好実験")
+# ==== UI ====
+st.markdown(f"### 曲A 価格: {mixA_info['price']}円")
+st.audio(fileA, format="audio/wav")
+st.markdown(f"### 曲B 価格: {mixB_info['price']}円")
+st.audio(fileB, format="audio/wav")
+st.markdown("External Option（どちらも買わない）")
 
-    base_path = "データセット"
+rank_options = [1,2,3]
+rankA = st.selectbox("曲Aの順位", rank_options, key=f"rankA_{trial}")
+rankB = st.selectbox("曲Bの順位", rank_options, key=f"rankB_{trial}")
+rankExt = st.selectbox("どちらも買わない順位", rank_options, key=f"rankExt_{trial}")
 
-    # ==== ミックス生成関数 ====
-    def generate_mix():
-        key_type = random.choice(["メジャー", "マイナー"])
-        sources, names = [], []
+if len({rankA, rankB, rankExt}) < 3:
+    st.warning("順位（1〜3）はそれぞれ1回ずつ使用してください。")
+else:
+    if st.button("送信"):
+        # 内部選好
+        internal_pref_A = 1 if rankA < rankB else 0
+        internal_pref_B = 1 if rankB < rankA else 0
+        # 外部選好
+        external_pref_A = 1 if rankA < rankExt else 0
+        external_pref_B = 1 if rankB < rankExt else 0
 
-        tonal_parts = ["ベース", "コード", "メロディ"]
-        for part in tonal_parts:
-            folder = os.path.join(base_path, key_type, part)
-            files = [f for f in os.listdir(folder) if f.endswith(".wav")]
-            choice = random.choice(files)
-            y, sr = librosa.load(os.path.join(folder, choice), sr=None)
-            sources.append(y)
-            names.append(f"{key_type}_{part}_{choice}")
+        baseA = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_A, external_pref_A]
+        baseB = [participant["id"], participant["gender"], participant["age"], trial, internal_pref_B, external_pref_B]
 
-        drum_folder = os.path.join(base_path, "ドラム")
-        drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
-        drum_choice = random.choice(drum_files)
-        y, sr = librosa.load(os.path.join(drum_folder, drum_choice), sr=None)
-        sources.append(y)
-        names.append(f"ドラム_{drum_choice}")
+        key_names = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 
-        min_len = min(len(x) for x in sources)
-        sources = [x[:min_len] for x in sources]
-        mix = np.sum(sources, axis=0)
-        mix /= np.max(np.abs(mix)) + 1e-6
+        def build_elements_dict(mix_info):
+            prefix = "M" if mix_info["key_type"]=="メジャー" else "m"
+            elements = {}
+            # 仮: ベース/コード/メロディの末尾数字を使用して1-hot化
+            elements[f"{prefix}ベース{mix_info['bass'][-5]}"] = True
+            elements[f"{prefix}コード{mix_info['chord'][-5]}"] = True
+            elements[f"{prefix}メロディ{mix_info['melody'][-5]}"] = True
+            elements[f"ドラム{mix_info['drum'][-5]}"] = True
+            # BPM
+            bpm_int = int(mix_info["tempo"]*100)
+            elements[f"BPM{bpm_int}"] = True
+            # 価格
+            elements[f"{mix_info['price']}円"] = True
+            # キー
+            shifted_index = (key_names.index("C")+mix_info["semitone_shift"])%12
+            elements[key_names[shifted_index]] = True
+            return elements
 
-        return mix, sr, key_type, names
+        elementsA = build_elements_dict(mixA_info)
+        elementsB = build_elements_dict(mixB_info)
 
-    # ==== 楽曲A/B生成 ====
-    if f"mixA_{st.session_state.trial}" not in st.session_state:
-        st.session_state[f"mixA_{st.session_state.trial}"] = generate_mix()
-        st.session_state[f"mixB_{st.session_state.trial}"] = generate_mix()
-        st.session_state[f"priceA_{st.session_state.trial}"] = random.choice(["100円", "50円", "25円"])
-        st.session_state[f"priceB_{st.session_state.trial}"] = random.choice(["100円", "50円", "25円"])
+        rowA = make_binary_row(baseA, elementsA, header)
+        rowB = make_binary_row(baseB, elementsB, header)
 
-    mixA, srA, keyA, namesA = st.session_state[f"mixA_{st.session_state.trial}"]
-    mixB, srB, keyB, namesB = st.session_state[f"mixB_{st.session_state.trial}"]
-    priceA = st.session_state[f"priceA_{st.session_state.trial}"]
-    priceB = st.session_state[f"priceB_{st.session_state.trial}"]
+        save_to_sheet("研究","アンケート集計",rowA)
+        save_to_sheet("研究","アンケート集計",rowB)
 
-    tmpA = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    tmpB = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    sf.write(tmpA.name, mixA, srA)
-    sf.write(tmpB.name, mixB, srB)
+        st.success(f"試行 {trial} の回答を保存しました。")
 
-    st.subheader(f"試行 {st.session_state.trial}/10")
-    st.write("2曲を聴いて、順位をつけてください（1位が最も好ましい）。")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.audio(tmpA.name, format="audio/wav")
-        st.write(f"🎵 曲A（{priceA}）")
-    with col2:
-        st.audio(tmpB.name, format="audio/wav")
-        st.write(f"🎵 曲B（{priceB}）")
-
-    st.write("🔢 以下の3つの選択肢に順位をつけてください。")
-
-    rank_options = [1, 2, 3]
-
-    rank_A = st.selectbox("曲Aの順位", rank_options, key="rankA")
-    rank_B = st.selectbox("曲Bの順位", rank_options, key="rankB")
-    rank_none = st.selectbox("どちらも買わないの順位", rank_options, key="rankNone")
-
-    # 重複チェック
-    if len({rank_A, rank_B, rank_none}) < 3:
-        st.warning("⚠️ 順位が重複しています。すべて異なる順位を選んでください。")
-    else:
-        if st.button("次へ"):
-            pid = st.session_state.participant_info["id"]
-            gender = st.session_state.participant_info["gender"]
-            age = st.session_state.participant_info["age"]
-            round_num = st.session_state.trial
-
-            internal_pref = 1 if rank_A < rank_B else 0
-            external_pref = 1 if rank_none == 3 else 0  # 「買わない」が最下位なら購入意欲あり
-
-            columns = [
-                "Mベース1","Mベース2","Mベース3",
-                "mベース1","mベース2","mベース3",
-                "Mコード1","Mコード2","Mコード3",
-                "mコード1","mコード2","mコード3",
-                "Mメロディ1","Mメロディ2","Mメロディ3","Mメロディ4",
-                "mメロディ1","mメロディ2","mメロディ3","mメロディ4",
-                "ドラム1","ドラム2","ドラム3",
-                "BPM100","BPM140","100円","50円",
-                "A","A#","B","C#","D","D#","E","F","F#","G","G#"
-            ]
-
-            # ==== 0/1リスト ====
-            rowA = [pid, gender, age, round_num, internal_pref, external_pref, priceA] + \
-                   [random.randint(0, 1) for _ in range(len(columns))]
-            rowB = [pid, gender, age, round_num, internal_pref, external_pref, priceB] + \
-                   [random.randint(0, 1) for _ in range(len(columns))]
-
-            save_to_sheet("研究", "選好データ", rowA)
-            save_to_sheet("研究", "選好データ", rowB)
-
+        if trial < TRIALS_PER_PERSON:
             st.session_state.trial += 1
-            if st.session_state.trial > 10:
-                st.success("🎉 実験完了！ありがとうございました。")
-            else:
-                st.rerun()
+            st.rerun()
+        else:
+            st.balloons()
+            st.success("全ての試行が完了しました！")
