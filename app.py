@@ -127,64 +127,64 @@ elif st.session_state.page == "experiment":
         key_type = random.choice(["メジャー", "マイナー"])
         base_path = os.path.join(AUDIO_FOLDER, key_type)
 
-    def pick_file(folder):
-        path = os.path.join(base_path, folder)
-        files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
-        if not files:
-            raise FileNotFoundError(f"{path} に音声ファイルがありません")
-        return random.choice(files)
+        def pick_file(folder):
+            path = os.path.join(base_path, folder)
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
+            if not files:
+                raise FileNotFoundError(f"{path} に音声ファイルがありません")
+            return random.choice(files)
 
-    # 1. ランダムに音源を選ぶ
-    bass_file = pick_file("ベース")
-    chord_file = pick_file("コード")
-    melody_file = pick_file("メロディ")
-    drum_file = random.choice([os.path.join(AUDIO_FOLDER, "ドラム", f)
-                               for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム"))
-                               if f.endswith(".wav")])
+        # 1. ランダムに音源を選ぶ
+        bass_file = pick_file("ベース")
+        chord_file = pick_file("コード")
+        melody_file = pick_file("メロディ")
+        drum_file = random.choice([os.path.join(AUDIO_FOLDER, "ドラム", f)
+                                   for f in os.listdir(os.path.join(AUDIO_FOLDER, "ドラム"))
+                                   if f.endswith(".wav")])
 
-    # 2. 音源読み込み
-    y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
-    y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
-    y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
-    y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
+        # 2. 音源読み込み
+        y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
+        y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
+        y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
+        y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-    # 3. ランダムキー決定
-    semitone_shift = random.randint(-6, 5)
+        # 3. ランダムキー決定
+        semitone_shift = random.randint(-6, 5)
 
-    # 4. ベース/コード/メロディにキー変更
-    y_bass = librosa.effects.pitch_shift(np.array(y_bass, dtype=np.float32), sr, n_steps=semitone_shift)
-    y_chord = librosa.effects.pitch_shift(np.array(y_chord, dtype=np.float32), sr, n_steps=semitone_shift)
-    y_melody = librosa.effects.pitch_shift(np.array(y_melody, dtype=np.float32), sr, n_steps=semitone_shift)
-    # ドラムはキー変更なし
+        # 4. ベース/コード/メロディにキー変更
+        y_bass = librosa.effects.pitch_shift(np.array(y_bass, dtype=np.float32), sr, n_steps=semitone_shift)
+        y_chord = librosa.effects.pitch_shift(np.array(y_chord, dtype=np.float32), sr, n_steps=semitone_shift)
+        y_melody = librosa.effects.pitch_shift(np.array(y_melody, dtype=np.float32), sr, n_steps=semitone_shift)
+        # ドラムはキー変更なし
 
-    # 5. 長さ合わせて合成（まだBPM変更前）
-    min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
-    mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
+        # 5. 長さ合わせて合成（まだBPM変更前）
+        min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
+        mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
 
-    # 6. ランダムBPM倍率
-    tempo = random.choice(bpm_options)
+        # 6. ランダムBPM倍率
+        tempo = random.choice(bpm_options)
 
-    # 7. 合成後の音声をBPM倍率で伸縮
-    final_mix = librosa.effects.time_stretch(mix, tempo)
+        # 7. 合成後の音声をBPM倍率で伸縮
+        final_mix = librosa.effects.time_stretch(mix, tempo)
     
-    # 8. 正規化
-    final_mix = final_mix / (np.max(np.abs(final_mix)) + 1e-6)
+        # 8. 正規化
+        final_mix = final_mix / (np.max(np.abs(final_mix)) + 1e-6)
 
-    # 9. ランダム価格
-    price = random.choice(price_options)
+        # 9. ランダム価格
+        price = random.choice(price_options)
 
-    return {
-        "mix": final_mix,
-        "sr": sr,
-        "key_type": key_type,
-        "semitone_shift": semitone_shift,
-        "tempo": tempo,
-        "price": price,
-        "bass": os.path.basename(bass_file),
-        "chord": os.path.basename(chord_file),
-        "melody": os.path.basename(melody_file),
-        "drum": os.path.basename(drum_file)
-    }
+        return {
+            "mix": final_mix,
+            "sr": sr,
+            "key_type": key_type,
+            "semitone_shift": semitone_shift,
+            "tempo": tempo,
+            "price": price,
+            "bass": os.path.basename(bass_file),
+            "chord": os.path.basename(chord_file),
+            "melody": os.path.basename(melody_file),
+            "drum": os.path.basename(drum_file)
+        }
 
 
     # 曲A/B生成
@@ -255,6 +255,7 @@ elif st.session_state.page == "experiment":
             else:
                 st.balloons()
                 st.success("全ての試行が完了しました！")
+
 
 
 
