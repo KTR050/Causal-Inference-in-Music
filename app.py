@@ -4,7 +4,6 @@ import streamlit as st
 import numpy as np
 import librosa
 import soundfile as sf
-import tempfile
 import random
 from save_to_sheet import save_to_sheet
 import gspread
@@ -24,15 +23,13 @@ else:
 
 # ==== ID取得関数 ====
 def get_next_id(spreadsheet_title, worksheet_name):
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
+    scope = ["https://spreadsheets.google.com/feeds",
+             "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
     client = gspread.authorize(creds)
     sheet = client.open(spreadsheet_title).worksheet(worksheet_name)
     rows = len(sheet.get_all_values())
-    return rows
+    return rows  # n行目 → id = n-1
 
 # ==== ページ制御 ====
 if "page" not in st.session_state:
@@ -96,7 +93,7 @@ elif st.session_state.page == "experiment":
     TEMP_FOLDER = "temp_audio"
     os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-    bpm_options = [0.8, 1.0, 1.2]
+    bpm_options = [0.8, 1.0, 1.2]  # BPM倍率
     price_options = [25, 50, 100]
     TRIALS_PER_PERSON = 10
 
@@ -131,77 +128,74 @@ elif st.session_state.page == "experiment":
             row.append(1 if elements_dict.get(col, False) else 0)
         return row
 
-    # ==== 曲生成 ====
+    # ==== 曲生成関数 ====
     def generate_mix():
-    key_type = random.choice(["メジャー", "マイナー"])
-    base_path = os.path.join(AUDIO_FOLDER, key_type)
+        key_type = random.choice(["メジャー", "マイナー"])
+        base_path = os.path.join(AUDIO_FOLDER, key_type)
 
-    def pick_file(folder):
-        path = os.path.join(base_path, folder)
-        files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
-        if not files:
-            raise FileNotFoundError(f"{path} に音声ファイルがありません")
-        return random.choice(files)
+        def pick_file(folder):
+            path = os.path.join(base_path, folder)
+            files = [os.path.join(path, f) for f in os.listdir(path) if f.endswith(".wav")]
+            if not files:
+                raise FileNotFoundError(f"{path} に音声ファイルがありません")
+            return random.choice(files)
 
-    # 1. ランダムに音源を選ぶ
-    bass_file = pick_file("ベース")
-    chord_file = pick_file("コード")
-    melody_file = pick_file("メロディ")
-    drum_file = random.choice([os.path.join(AUDIO_FOLDER,"ドラム",f) 
-                               for f in os.listdir(os.path.join(AUDIO_FOLDER,"ドラム")) 
-                               if f.endswith(".wav")])
+        # 1. ランダムに音源選択
+        bass_file = pick_file("ベース")
+        chord_file = pick_file("コード")
+        melody_file = pick_file("メロディ")
+        drum_file = random.choice([os.path.join(AUDIO_FOLDER,"ドラム",f)
+                                   for f in os.listdir(os.path.join(AUDIO_FOLDER,"ドラム"))
+                                   if f.endswith(".wav")])
 
-    # 2. 音源読み込み
-    y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
-    y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
-    y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
-    y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
+        # 2. 音源読み込み
+        y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
+        y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
+        y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
+        y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-    # 3. 変更するキーをランダムに決定
-    semitone_shift = random.randint(-6, 5)
+        # 3. ランダムキー決定
+        semitone_shift = random.randint(-6, 5)
 
-    # 4. ベース、コード、メロディのキーを変更
-    y_bass = librosa.effects.pitch_shift(y_bass, sr, n_steps=semitone_shift)
-    y_chord = librosa.effects.pitch_shift(y_chord, sr, n_steps=semitone_shift)
-    y_melody = librosa.effects.pitch_shift(y_melody, sr, n_steps=semitone_shift)
-    # ドラムはキー変更なし
+        # 4. ベース/コード/メロディのキー変更
+        y_bass = librosa.effects.pitch_shift(y_bass, sr, n_steps=semitone_shift)
+        y_chord = librosa.effects.pitch_shift(y_chord, sr, n_steps=semitone_shift)
+        y_melody = librosa.effects.pitch_shift(y_melody, sr, n_steps=semitone_shift)
+        # ドラムは変更なし
 
-    # 5. 合成（まだBPMは変更しない）
-    min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
-    mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
+        # 5. 合成前に最短長さを取得
+        min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
 
-    # 6. BPMをランダムに決定
-    tempo = random.choice([0.8, 1.0, 1.2])
+        # 6. ランダムBPM決定
+        tempo = random.choice(bpm_options)
 
-    # 7. 合成した音声のBPMを変更（time_stretch）
-    mix_bass = librosa.effects.time_stretch(y_bass[:min_len], tempo)
-    mix_chord = librosa.effects.time_stretch(y_chord[:min_len], tempo)
-    mix_melody = librosa.effects.time_stretch(y_melody[:min_len], tempo)
-    mix_drum = librosa.effects.time_stretch(y_drum[:min_len], tempo)
+        # 7. BPM適用
+        mix_bass = librosa.effects.time_stretch(y_bass[:min_len], tempo)
+        mix_chord = librosa.effects.time_stretch(y_chord[:min_len], tempo)
+        mix_melody = librosa.effects.time_stretch(y_melody[:min_len], tempo)
+        mix_drum = librosa.effects.time_stretch(y_drum[:min_len], tempo)
 
-    # BPM変更後に再合成
-    min_len2 = min(len(mix_bass), len(mix_chord), len(mix_melody), len(mix_drum))
-    final_mix = mix_bass[:min_len2] + mix_chord[:min_len2] + mix_melody[:min_len2] + mix_drum[:min_len2]
+        min_len2 = min(len(mix_bass), len(mix_chord), len(mix_melody), len(mix_drum))
+        final_mix = mix_bass[:min_len2] + mix_chord[:min_len2] + mix_melody[:min_len2] + mix_drum[:min_len2]
 
-    # 正規化
-    final_mix = final_mix / (np.max(np.abs(final_mix)) + 1e-6)
+        # 8. 正規化
+        final_mix = final_mix / (np.max(np.abs(final_mix)) + 1e-6)
 
-    # ランダム価格
-    price = random.choice([25, 50, 100])
+        # 9. ランダム価格
+        price = random.choice(price_options)
 
-    return {
-        "mix": final_mix,
-        "sr": sr,
-        "key_type": key_type,
-        "semitone_shift": semitone_shift,
-        "tempo": tempo,
-        "price": price,
-        "bass": os.path.basename(bass_file),
-        "chord": os.path.basename(chord_file),
-        "melody": os.path.basename(melody_file),
-        "drum": os.path.basename(drum_file)
-    }
-
+        return {
+            "mix": final_mix,
+            "sr": sr,
+            "key_type": key_type,
+            "semitone_shift": semitone_shift,
+            "tempo": tempo,
+            "price": price,
+            "bass": os.path.basename(bass_file),
+            "chord": os.path.basename(chord_file),
+            "melody": os.path.basename(melody_file),
+            "drum": os.path.basename(drum_file)
+        }
 
     # ==== 曲A/B生成 ====
     if f"mixA_{trial}" not in st.session_state:
@@ -216,7 +210,7 @@ elif st.session_state.page == "experiment":
     sf.write(fileA, mixA_info["mix"], mixA_info["sr"])
     sf.write(fileB, mixB_info["mix"], mixB_info["sr"])
 
-    # ==== UI ====
+    # ==== UI表示 ====
     st.markdown(f"### 曲A 価格: {mixA_info['price']}円")
     st.audio(fileA, format="audio/wav")
     st.markdown(f"### 曲B 価格: {mixB_info['price']}円")
@@ -247,7 +241,6 @@ elif st.session_state.page == "experiment":
             def build_elements_dict(mix_info):
                 prefix = "M" if mix_info["key_type"]=="メジャー" else "m"
                 elements = {}
-                # ベース/コード/メロディの末尾数字で1-hot化
                 elements[f"{prefix}ベース{mix_info['bass'][-5]}"] = True
                 elements[f"{prefix}コード{mix_info['chord'][-5]}"] = True
                 elements[f"{prefix}メロディ{mix_info['melody'][-5]}"] = True
@@ -276,5 +269,3 @@ elif st.session_state.page == "experiment":
             else:
                 st.balloons()
                 st.success("全ての試行が完了しました！")
-
-
