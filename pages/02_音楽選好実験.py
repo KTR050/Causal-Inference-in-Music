@@ -84,7 +84,7 @@ def generate_mix():
     y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
     # ランダムキー（半音）とテンポ倍率
-    semitone_shift = random.randint(-5, 5)
+    semitone_shift = random.randint(-5, 6)
     tempo = random.choice(bpm_options)  # 例: 0.8, 1.0, 1.4
 
     # safety wrappers
