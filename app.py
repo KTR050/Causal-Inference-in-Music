@@ -142,40 +142,52 @@ elif st.session_state.page == "experiment":
                                    for f in os.listdir(os.path.join(AUDIO_FOLDER,"ドラム")) 
                                    if f.endswith(".wav")])
 
-        # 2. 音源読み込み
+        # 音源読み込み
         y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
         y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
         y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
         y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-        # 3. 変更するキーをランダムに決定
+        # float32に変換
+        y_bass = np.array(y_bass, dtype=np.float32)
+        y_chord = np.array(y_chord, dtype=np.float32)
+        y_melody = np.array(y_melody, dtype=np.float32)
+        y_drum = np.array(y_drum, dtype=np.float32)
+
+        # ランダムキー変更
         semitone_shift = random.randint(-6, 5)
+        if len(y_bass) > 1:
+            y_bass = librosa.effects.pitch_shift(y_bass, sr, n_steps=semitone_shift)
+        if len(y_chord) > 1:
+            y_chord = librosa.effects.pitch_shift(y_chord, sr, n_steps=semitone_shift)
+        if len(y_melody) > 1:
+            y_melody = librosa.effects.pitch_shift(y_melody, sr, n_steps=semitone_shift)
 
-        # 4. ベース、コード、メロディのキーを変更
-        y_bass = librosa.effects.pitch_shift(np.array(y_bass, dtype=np.float32), sr, n_steps=semitone_shift)
-        y_chord = librosa.effects.pitch_shift(np.array(y_chord, dtype=np.float32), sr, n_steps=semitone_shift)
-        y_melody = librosa.effects.pitch_shift(np.array(y_melody, dtype=np.float32), sr, n_steps=semitone_shift)
-        # ドラムはキー変更なし
-
-        # 5. 合成（まだBPMは変更しない）
+        # 合成前の最短長さ
         min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
-        mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
+        y_bass, y_chord, y_melody, y_drum = y_bass[:min_len], y_chord[:min_len], y_melody[:min_len], y_drum[:min_len]
 
-        # 6. BPMをランダムに決定
-        tempo = random.choice(bpm_options)
+        # BPMランダム決定
+        tempo = random.choice([0.8, 1.0, 1.2])
 
-        # 7. 合成した音声のBPMを変更
-        mix_bass = librosa.effects.time_stretch(np.array(y_bass[:min_len], dtype=np.float32), tempo)
-        mix_chord = librosa.effects.time_stretch(np.array(y_chord[:min_len], dtype=np.float32), tempo)
-        mix_melody = librosa.effects.time_stretch(np.array(y_melody[:min_len], dtype=np.float32), tempo)
-        mix_drum = librosa.effects.time_stretch(np.array(y_drum[:min_len], dtype=np.float32), tempo)
+        # BPM変更 (time_stretch) は1秒以上の音声で安全
+        def safe_time_stretch(y, rate):
+            if len(y) < 2:
+                return y
+            return librosa.effects.time_stretch(y, rate)
 
-        # BPM変更後に再合成
-        min_len2 = min(len(mix_bass), len(mix_chord), len(mix_melody), len(mix_drum))
-        final_mix = mix_bass[:min_len2] + mix_chord[:min_len2] + mix_melody[:min_len2] + mix_drum[:min_len2]
+        y_bass = safe_time_stretch(y_bass, tempo)
+        y_chord = safe_time_stretch(y_chord, tempo)
+        y_melody = safe_time_stretch(y_melody, tempo)
+        y_drum = safe_time_stretch(y_drum, tempo)
+        
+        # BPM変更後の最短長さで再合成
+        min_len2 = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
+        final_mix = y_bass[:min_len2] + y_chord[:min_len2] + y_melody[:min_len2] + y_drum[:min_len2]
 
         # 正規化
         final_mix = final_mix / (np.max(np.abs(final_mix)) + 1e-6)
+
 
         # ランダム価格
         price = random.choice(price_options)
@@ -261,3 +273,4 @@ elif st.session_state.page == "experiment":
             else:
                 st.balloons()
                 st.success("全ての試行が完了しました！")
+
