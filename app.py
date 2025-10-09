@@ -143,9 +143,9 @@ elif st.session_state.page == "experiment":
                                    if f.endswith(".wav")])
 
         # 2. 音源読み込み
-        y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
-        y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
-        y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
+        y_bass = librosa.effects.pitch_shift(y_bass.astype(np.float32), sr, n_steps=semitone_shift)
+        y_chord = librosa.effects.pitch_shift(y_chord.astype(np.float32), sr, n_steps=semitone_shift)
+        y_melody = librosa.effects.pitch_shift(y_melody.astype(np.float32), sr, n_steps=semitone_shift)
         y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
         # 3. ランダムキー決定
@@ -164,11 +164,19 @@ elif st.session_state.page == "experiment":
         # 6. ランダムBPM倍率
         tempo = random.choice(bpm_options)
 
-        # 7. 合成後の音声をBPM倍率で伸縮
-        final_mix = librosa.effects.time_stretch(mix, tempo)
-    
-        # 8. 正規化
-        final_mix = final_mix / (np.max(np.abs(final_mix)) + 1e-6)
+        # 合成
+        min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
+        mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
+
+        # BPMランダム選択
+        tempo = random.choice([0.8, 1.0, 1.2])
+
+        # BPMに応じて時間伸縮
+        mix = librosa.effects.time_stretch(mix, rate=tempo)
+
+        # 正規化
+        mix = mix / (np.max(np.abs(mix)) + 1e-6)
+
 
         # 9. ランダム価格
         price = random.choice(price_options)
@@ -255,6 +263,7 @@ elif st.session_state.page == "experiment":
             else:
                 st.balloons()
                 st.success("全ての試行が完了しました！")
+
 
 
 
