@@ -124,8 +124,8 @@ elif st.session_state.page == "experiment":
 
     # 曲生成
     def generate_mix():
-    key_type = random.choice(["メジャー", "マイナー"])
-    base_path = os.path.join(AUDIO_FOLDER, key_type)
+        key_type = random.choice(["メジャー", "マイナー"])
+        base_path = os.path.join(AUDIO_FOLDER, key_type)
 
     def pick_file(folder):
         path = os.path.join(base_path, folder)
@@ -255,5 +255,6 @@ elif st.session_state.page == "experiment":
             else:
                 st.balloons()
                 st.success("全ての試行が完了しました！")
+
 
 
