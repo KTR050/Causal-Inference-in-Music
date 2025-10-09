@@ -173,15 +173,18 @@ elif st.session_state.page == "experiment":
         except:
             pass
 
-        mix = mix_non_drum + y_drum[:min_len]
-        mix = mix / (np.max(np.abs(mix))+1e-6)
-
         # BPMランダム変更
         tempo = random.choice(bpm_options)
         try:
-            mix = librosa.effects.time_stretch(mix, tempo)
+            mix_non_drum = librosa.effects.time_stretch(mix_non_drum, tempo)
+            y_drum_stretched = librosa.effects.time_stretch(y_drum[:min_len], tempo)
+            min_len_new = min(len(mix_non_drum), len(y_drum_stretched))
+            mix = mix_non_drum[:min_len_new] + y_drum_stretched[:min_len_new]
         except:
-            pass
+            mix = mix_non_drum + y_drum[:min_len]
+
+        mix = mix / (np.max(np.abs(mix))+1e-6)
+
 
         # 価格ランダム
         price = random.choice(price_options)
@@ -268,3 +271,4 @@ elif st.session_state.page == "experiment":
             else:
                 st.balloons()
                 st.success("全ての試行が完了しました！")
+
