@@ -124,23 +124,48 @@ elif st.session_state.page == "experiment":
 
     # ==== ミックス生成 ====
     def generate_mix():
-        key_type = random.choice(key_types)
-        sources, names = [], []
+    key_type = random.choice(["メジャー", "マイナー"])
+    sources, names = [], []
 
-        for part in parts:
-            folder = os.path.join(base_path, key_type, part)
-            files = os.listdir(folder)
-            choice = random.choice(files)
-            y, sr = librosa.load(os.path.join(folder, choice), sr=None)
-            sources.append(y)
-            names.append(choice)
+    # メジャー/マイナー用パート
+    tonal_parts = ["ベース", "コード", "メロディ"]
+    for part in tonal_parts:
+        folder = os.path.join(base_path, key_type, part)
+        if not os.path.exists(folder):
+            raise FileNotFoundError(f"フォルダが見つかりません: {folder}")
 
-        min_len = min(len(x) for x in sources)
-        sources = [x[:min_len] for x in sources]
-        mix = np.sum(sources, axis=0)
-        mix /= np.max(np.abs(mix)) + 1e-6
+        files = [f for f in os.listdir(folder) if f.endswith(".wav")]
+        if not files:
+            raise FileNotFoundError(f"音声ファイルが存在しません: {folder}")
 
-        return mix, sr, key_type, names
+        choice = random.choice(files)
+        y, sr = librosa.load(os.path.join(folder, choice), sr=None)
+        sources.append(y)
+        names.append(f"{key_type}_{part}_{choice}")
+
+    # ドラムはトップ階層から
+    drum_folder = os.path.join(base_path, "ドラム")
+    if not os.path.exists(drum_folder):
+        raise FileNotFoundError(f"ドラムフォルダが見つかりません: {drum_folder}")
+
+    drum_files = [f for f in os.listdir(drum_folder) if f.endswith(".wav")]
+    if not drum_files:
+        raise FileNotFoundError(f"ドラム音声ファイルが存在しません: {drum_folder}")
+
+    drum_choice = random.choice(drum_files)
+    y, sr = librosa.load(os.path.join(drum_folder, drum_choice), sr=None)
+    sources.append(y)
+    names.append(f"ドラム_{drum_choice}")
+
+    # ===== 長さを合わせてミックス =====
+    min_len = min(len(x) for x in sources)
+    sources = [x[:min_len] for x in sources]
+
+    mix = np.sum(sources, axis=0)
+    mix /= np.max(np.abs(mix)) + 1e-6
+
+    return mix, sr, key_type, names
+
 
     # ==== 曲生成 ====
     if f"mixA_{st.session_state.trial}" not in st.session_state:
@@ -206,3 +231,4 @@ elif st.session_state.page == "experiment":
             st.success("🎉 実験完了！ご協力ありがとうございました！")
         else:
             st.rerun()
+
