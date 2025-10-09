@@ -77,27 +77,60 @@ def generate_mix():
     melody_file = pick_file("メロディ")
     drum_file = random.choice([os.path.join(AUDIO_FOLDER,"ドラム",f) for f in os.listdir(os.path.join(AUDIO_FOLDER,"ドラム")) if f.endswith(".wav")])
 
+    # load
     y_bass, sr = librosa.load(bass_file, sr=None, mono=True)
     y_chord, _ = librosa.load(chord_file, sr=sr, mono=True)
     y_melody, _ = librosa.load(melody_file, sr=sr, mono=True)
     y_drum, _ = librosa.load(drum_file, sr=sr, mono=True)
 
-    # 長さ合わせ
+    # ランダムキー（半音）とテンポ倍率
+    semitone_shift = random.randint(-5, 5)
+    tempo = random.choice(bpm_options)  # 例: 0.8, 1.0, 1.4
+
+    # safety wrappers
+    def safe_pitch_shift(y, sr, n_steps):
+        if n_steps == 0:
+            return y
+        try:
+            return librosa.effects.pitch_shift(y, sr, n_steps=n_steps)
+        except Exception as e:
+            # 失敗しても元音源を返す（デバッグ用に通知したい場合は st.warning() などを使ってください）
+            print(f"pitch_shift failed: {e}")
+            return y
+
+    def safe_time_stretch(y, rate):
+        if rate == 1.0:
+            return y
+        try:
+            # rate >1 で速く（短く）なる
+            return librosa.effects.time_stretch(y, rate)
+        except Exception as e:
+            # time_stretch が短すぎる音源などで失敗する場合のフォールバック（単純なリサンプリング風）
+            print(f"time_stretch failed, fallback: {e}")
+            new_len = max(1, int(len(y) / rate))
+            resampled = np.interp(np.linspace(0, len(y)-1, new_len), np.arange(len(y)), y).astype(np.float32)
+            return resampled
+
+    # まずピッチを変える（ドラムは変更しない）
+    y_bass = safe_pitch_shift(y_bass, sr, semitone_shift)
+    y_chord = safe_pitch_shift(y_chord, sr, semitone_shift)
+    y_melody = safe_pitch_shift(y_melody, sr, semitone_shift)
+    # ドラムはピッチ変更しない（多くの場合ビートが歪むため）
+
+    # 次にテンポ（速度）を変更（全トラックに同じ倍率を適用）
+    y_bass = safe_time_stretch(y_bass, tempo)
+    y_chord = safe_time_stretch(y_chord, tempo)
+    y_melody = safe_time_stretch(y_melody, tempo)
+    y_drum = safe_time_stretch(y_drum, tempo)
+
+    # 長さ揃え
     min_len = min(len(y_bass), len(y_chord), len(y_melody), len(y_drum))
     mix = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len] + y_drum[:min_len]
     mix = mix.astype(np.float32)
 
-    # ランダムキー変換（ドラム以外）
-    semitone_shift = random.randint(-5,5)
-    try:
-        mix_non_drum = y_bass[:min_len] + y_chord[:min_len] + y_melody[:min_len]
-        mix_non_drum = librosa.effects.pitch_shift(mix_non_drum, sr, n_steps=semitone_shift)
-        mix = mix_non_drum + y_drum[:min_len]
-    except:
-        pass
+    # 正規化（括弧に注意）
+    mix = mix / (np.max(np.abs(mix)) + 1e-6)
 
-    mix = mix / np.max(np.abs(mix)+1e-6)
-    tempo = random.choice(bpm_options)
     price = random.choice(price_options)
 
     return {
@@ -108,6 +141,7 @@ def generate_mix():
         "melody": os.path.basename(melody_file),
         "drum": os.path.basename(drum_file)
     }
+
 
 # ==== 曲A/B生成 ====
 if f"mixA_{trial}" not in st.session_state:
