@@ -17,8 +17,8 @@ AUDIO_FOLDER = "データセット"
 TEMP_FOLDER = "temp_audio"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-bpm_options = [0.8, 1.0, 1.4]   # ピッチ/テンポ倍率
-price_options = [25, 50, 100]
+bpm_options = [0.8, 1.0, 1.4, 2.0]   # ピッチ/テンポ倍率
+price_options = [25, 50, 100, 200]
 TRIALS_PER_PERSON = 10
 
 # ==== セッション管理 ====
